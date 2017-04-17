@@ -45,7 +45,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	mn.name, err = testContainersPrefix()
 
 	if err != nil {
-		fmt.Print(err)
+		fmt.Println(err)
 		return FailReturn
 	}
 
@@ -53,13 +53,13 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	mn.client, err = docker.NewEnvClient()
 	if err != nil {
-		fmt.Print(err)
+		fmt.Println(err)
 		return FailReturn
 	}
 
 	err = mn.pull(images)
 	if err != nil {
-		fmt.Print(err)
+		fmt.Println(err)
 		return FailReturn
 	}
 
