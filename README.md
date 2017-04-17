@@ -37,14 +37,61 @@ func testPing(t *testing.T) {
 }
 ```
 
+## Example
+Here is a complete example using a simple Echo service.
 
+Please note that you can ask for as many containers and different services as you
+want, they will all have appropriate names that consist of a uniq id per test, your package path, test name, container, and a serial indicator starting from 0. Not to worry about containers or tests stepping over each other.
+
+```go
+package example_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/omeid/conex"
+	"github.com/omeid/conex/echo"
+	echolib "github.com/omeid/echo"
+)
+
+func TestMain(m *testing.M) {
+	os.Exit(conex.Run(m))
+}
+
+func TestEcho(t *testing.T) {
+	reverse := true
+
+	e, done := echo.Box(t, reverse)
+	defer done()
+
+	say := "hello"
+	expect := say
+	if reverse {
+		expect = echolib.Reverse(say)
+	}
+
+	reply, err := e.Say(say)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reply != expect {
+		t.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
+	}
+
+}
+
+```
 
 ## Drivers Packages
 
-Conex drivers a simple packages following a convention to provide a simple interface
-to the underlying service using their native driver/clients so you don't have to think about containers in your tests.
+Conex drivers are simple packages that follow a convention to provide a simple interface to the underlying service run on the container.
+So the user doesn't have to think about containers but the service in their tests.
 
-Define an image attribute for your package that users can change and register it with conex.
+
+First, define an image attribute for your package that users can change and register it with conex.
 
 ```go
 // Image to use for the box.
