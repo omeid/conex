@@ -83,7 +83,7 @@ func (mn *manager) boxName(test string, image string, params ...string) string {
 }
 
 // Box returns the required container by image name and any tags.
-func (mn *manager) Box(t *testing.T, image string, params ...string) Container {
+func (mn *manager) Box(t *testing.T, image string, params ...string) (Container, func()) {
 
 	name := mn.boxName(t.Name(), image, params...)
 
@@ -123,10 +123,27 @@ func (mn *manager) Box(t *testing.T, image string, params ...string) Container {
 		fatalf(t, "Failed to inspect: %v", err)
 	}
 
-	return &container{
-		client: mn.client,
-		c:      cjson,
+	con := &container{c: cjson}
+
+	done := func() {
+		err := mn.drop(con)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
+
+	return con, done
+}
+
+func (mn *manager) drop(c *container) error {
+	err := mn.client.ContainerStop(context.Background(), c.c.ID, nil)
+
+	if err != nil {
+		return err
+	}
+
+	return mn.client.ContainerRemove(context.Background(), c.c.ID, types.ContainerRemoveOptions{})
+
 }
 
 func (mn *manager) pull(images []string) error {

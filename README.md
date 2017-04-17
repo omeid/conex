@@ -85,6 +85,36 @@ func TestEcho(t *testing.T) {
 
 ```
 
+And running tests will yield:
+
+```sh
+$ go test -v
+2017/04/17 22:13:05 
+=== conex: Pulling Images
+--- Pulling omeid/echo:http (1 of 1)
+http: Pulling from omeid/echo
+627beaf3eaaf: Already exists 
+8800e3417eb1: Already exists 
+b6acb96fee14: Already exists 
+66be5afddf19: Already exists 
+8ca17cdcfc93: Already exists 
+792cf0844f5e: Already exists 
+26601152322c: Pull complete 
+2cb3c6a6d3ee: Pull complete 
+Digest: sha256:f6968275ab031d91a3c37e8a9f65b961b5a3df850a90fe4551ecb4724ab3b0a7
+Status: Downloaded newer image for omeid/echo:http
+=== conex: Pulling Done
+2017/04/17 22:13:38 
+2017/04/17 22:13:38 
+=== conex: Starting your tests.
+=== RUN   TestEcho
+--- PASS: TestEcho (0.55s)
+	conex.go:11: creating (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
+	conex.go:11: started (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
+PASS
+ok  	test	33.753s
+```
+
 ## Drivers Packages
 
 Conex drivers are simple packages that follow a convention to provide a simple interface to the underlying service run on the container.
@@ -102,21 +132,13 @@ func init() {
 }
 ```
 
-Then export a box function that returns a client connect to the container and a function to be called when the user is done with the client and thus container.
+Then export a box function that returns a client connect to the container and return that with the done func.
 
 ```go
 // Box returns an connect to an echo container based on
 // your provided tags.
 func Box(t *testing.T, optionally SomeOptions) (your.Client, func()) {
-  c := conex.Box(t, Image)
-
-  // Define a function that calls container.Drop when called.
-  done := func() {
-    err := c.Drop()
-    if err != nil {
-      t.Fatal(err)
-    }
-  }
+  c, done := conex.Box(t, Image)
 
   opt := &your.Options{
     Addr: c.Address(),

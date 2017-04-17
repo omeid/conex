@@ -19,7 +19,7 @@ func fatalf(t *testing.T, f string, args ...interface{}) {
 // Manager the conex container manager.
 type Manager interface {
 	Run(m *testing.M, images ...string) int
-	Box(t *testing.T, image string, params ...string) Container
+	Box(t *testing.T, image string, params ...string) (Container, func())
 }
 
 // Container is a simple interface to a docker
@@ -32,8 +32,4 @@ type Container interface {
 
 	//TODO: Yo.
 	// Ports() []string
-	// TTY()
-
-	// Stop and Remove the container.
-	Drop() error
 }
