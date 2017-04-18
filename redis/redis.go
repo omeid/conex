@@ -22,7 +22,7 @@ func init() {
 // Box returns an echo client connect to an echo container based on
 // your provided tags.
 func Box(t *testing.T, db int) (*redis.Client, conex.Container) {
-	c := conex.Box(t, Image)
+	c := conex.Box(t, &conex.Config{Image: Image})
 
 	addr := fmt.Sprintf("%s:%s", c.Address(), Port)
 	opt := &redis.Options{

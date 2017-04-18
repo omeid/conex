@@ -17,10 +17,15 @@ func TestMain(m *testing.M) {
 func TestBasicMulti(t *testing.T) {
 	t.Parallel()
 
-	c0 := conex.Box(t, basicImage, "sh")
+	conf := &conex.Config{
+		Image: basicImage,
+		Cmd:   []string{"sh"},
+	}
+
+	c0 := conex.Box(t, conf)
 	defer c0.Drop()
 
-	c1 := conex.Box(t, basicImage, "sh")
+	c1 := conex.Box(t, conf)
 	defer c1.Drop()
 
 	for suffix, c := range map[string]conex.Container{"_0": c0, "_1": c1} {

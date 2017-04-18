@@ -18,7 +18,7 @@ func init() {
 // Box returns a RethinkDB client connect to a RethinkDB
 // container based on your provided tags.
 func Box(t *testing.T, db string) (*gorethink.Session, conex.Container) {
-	c := conex.Box(t, Image)
+	c := conex.Box(t, &conex.Config{Image: Image})
 
 	opts := gorethink.ConnectOpts{
 		Address:  c.Address(),

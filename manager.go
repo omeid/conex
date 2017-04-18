@@ -76,7 +76,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	return ret
 }
 
-func (mn *manager) boxName(test string, image string, params ...string) string {
+func (mn *manager) boxName(test string, image string, params []string) string {
 	image = strings.Replace(image, ":", ".", -1)
 	image = strings.Replace(image, "/", "_", -1)
 	name := fmt.Sprintf("%s-%s-%s", mn.name, test, image)
@@ -86,15 +86,15 @@ func (mn *manager) boxName(test string, image string, params ...string) string {
 }
 
 // Box returns the required container by image name and any tags.
-func (mn *manager) Box(t *testing.T, image string, params ...string) Container {
+func (mn *manager) Box(t *testing.T, conf *Config) Container {
 
-	name := mn.boxName(t.Name(), image, params...)
+	name := mn.boxName(t.Name(), conf.Image, conf.Cmd)
 
 	// cname is a simple canonical name that includes the
 	// container image name and params.
-	cname := image
-	if len(params) != 0 {
-		cname = cname + ": " + strings.Join(params, " ")
+	cname := conf.Image
+	if len(conf.Cmd) != 0 {
+		cname = cname + ": " + strings.Join(conf.Cmd, " ")
 	}
 
 	logf(t, "creating (%s) as %s", cname, name)
@@ -102,8 +102,12 @@ func (mn *manager) Box(t *testing.T, image string, params ...string) Container {
 	c, err := mn.client.ContainerCreate(
 		context.Background(),
 		&dockercontainer.Config{
-			Image: image,
-			Cmd:   strslice.StrSlice(params),
+			Image:      conf.Image,
+			Cmd:        strslice.StrSlice(conf.Cmd),
+			Env:        conf.Env,
+			Hostname:   conf.Hostname,
+			Domainname: conf.Domainname,
+			User:       conf.User,
 		},
 		nil,
 		nil,

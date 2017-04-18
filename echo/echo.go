@@ -25,7 +25,7 @@ func Box(t *testing.T, reverse bool) (echo.Echo, conex.Container) {
 		params = append(params, "-reverse")
 	}
 
-	c := conex.Box(t, Image, params...)
+	c := conex.Box(t, &conex.Config{Image: Image, Cmd: params})
 
 	addr := fmt.Sprintf("http://%s:3000", c.Address())
 

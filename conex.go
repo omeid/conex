@@ -19,7 +19,7 @@ func fatalf(t *testing.T, f string, args ...interface{}) {
 // Manager the conex container manager.
 type Manager interface {
 	Run(m *testing.M, images ...string) int
-	Box(t *testing.T, image string, params ...string) Container
+	Box(t *testing.T, config *Config) Container
 }
 
 // Container is a simple interface to a docker
@@ -34,4 +34,14 @@ type Container interface {
 
 	//TODO: Yo.
 	// Ports() []string
+}
+
+// Config contains the configuration data about a container.
+type Config struct {
+	Image      string   // Name of the image as it was passed by the operator (e.g. could be symbolic)
+	Env        []string // List of environment variable to set in the container
+	Cmd        []string // Command to run when starting the container
+	Hostname   string   // Hostname
+	Domainname string   // Domainname
+	User       string   // User that will run the command(s) inside the container, also support user:group
 }

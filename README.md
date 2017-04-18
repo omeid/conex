@@ -140,14 +140,25 @@ Return the client and the container.
 // Box returns an connect to an echo container based on
 // your provided tags.
 func Box(t *testing.T, optionally SomeOptions) (your.Client, conex.Container)) {
-  c, con := conex.Box(t, Image)
+
+  conf := &conex.Config{
+    Image: Image,
+    // Here you may set other options based
+    // on the options passed to Box.
+  }
+
+  c, con := conex.Box(t, conf)
 
   opt := &your.Options{
     Addr: c.Address(),
     magic: optionally.SomeMagic,
   }
 
-  client := redis.NewClient(opt)
+  client, err := redis.NewClient(opt)
+
+  if err != nil {
+    t.Fatal(err)
+  }
 
   return client, con
 }
