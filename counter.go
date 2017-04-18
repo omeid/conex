@@ -1,7 +1,6 @@
 package conex
 
 import (
-	"strings"
 	"sync"
 )
 
@@ -10,11 +9,9 @@ type counter struct {
 	lock sync.Mutex
 }
 
-func (s *counter) Count(name string, keys []string) int {
+func (s *counter) Count(hash string) int {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-
-	hash := name + "-" + strings.Join(keys, "-")
 
 	count, ok := s.seqs[hash]
 	if !ok {

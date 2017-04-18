@@ -79,7 +79,10 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 func (mn *manager) boxName(test string, image string, params ...string) string {
 	image = strings.Replace(image, ":", ".", -1)
 	image = strings.Replace(image, "/", "_", -1)
-	return fmt.Sprintf("%s-%s-%s_%d", mn.name, test, image, mn.counter.Count(image, params))
+	name := fmt.Sprintf("%s-%s-%s", mn.name, test, image)
+	name = fmt.Sprintf("%s_%d", name, mn.counter.Count(name))
+
+	return name
 }
 
 // Box returns the required container by image name and any tags.

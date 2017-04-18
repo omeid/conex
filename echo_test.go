@@ -1,17 +1,11 @@
 package conex_test
 
 import (
-	"os"
 	"testing"
 
-	"github.com/omeid/conex"
 	"github.com/omeid/conex/echo"
 	echolib "github.com/omeid/echo"
 )
-
-func TestMain(m *testing.M) {
-	os.Exit(conex.Run(m))
-}
 
 func TestEcho1(t *testing.T) { t.Parallel(); echoTest(t, false) }
 func TestEcho2(t *testing.T) { t.Parallel(); echoTest(t, false) }
