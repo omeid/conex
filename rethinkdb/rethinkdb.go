@@ -17,8 +17,8 @@ func init() {
 
 // Box returns a RethinkDB client connect to a RethinkDB
 // container based on your provided tags.
-func Box(t *testing.T, db string) (*gorethink.Session, func()) {
-	c, done := conex.Box(t, Image)
+func Box(t *testing.T, db string) (*gorethink.Session, conex.Container) {
+	c := conex.Box(t, Image)
 
 	opts := gorethink.ConnectOpts{
 		Address:  c.Address(),
@@ -30,5 +30,5 @@ func Box(t *testing.T, db string) (*gorethink.Session, func()) {
 		t.Fatal(err)
 	}
 
-	return sesh, done
+	return sesh, c
 }

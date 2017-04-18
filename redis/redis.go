@@ -21,8 +21,8 @@ func init() {
 
 // Box returns an echo client connect to an echo container based on
 // your provided tags.
-func Box(t *testing.T, db int) (*redis.Client, func()) {
-	c, done := conex.Box(t, Image)
+func Box(t *testing.T, db int) (*redis.Client, conex.Container) {
+	c := conex.Box(t, Image)
 
 	addr := fmt.Sprintf("%s:%s", c.Address(), Port)
 	opt := &redis.Options{
@@ -32,5 +32,5 @@ func Box(t *testing.T, db int) (*redis.Client, func()) {
 
 	client := redis.NewClient(opt)
 
-	return client, done
+	return client, c
 }

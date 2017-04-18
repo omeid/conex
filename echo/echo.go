@@ -18,14 +18,14 @@ func init() {
 
 // Box returns an echo client connect to an echo container based on
 // your provided tags.
-func Box(t *testing.T, reverse bool) (echo.Echo, func()) {
+func Box(t *testing.T, reverse bool) (echo.Echo, conex.Container) {
 	params := []string{}
 
 	if reverse {
 		params = append(params, "-reverse")
 	}
 
-	c, done := conex.Box(t, Image, params...)
+	c := conex.Box(t, Image, params...)
 
 	addr := fmt.Sprintf("http://%s:3000", c.Address())
 
@@ -34,5 +34,5 @@ func Box(t *testing.T, reverse bool) (echo.Echo, func()) {
 		t.Fatal(err)
 	}
 
-	return e, done
+	return e, c
 }

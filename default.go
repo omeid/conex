@@ -30,7 +30,7 @@ func Run(m *testing.M, images ...string) int {
 
 // Box creates a new container using the provided image and passes
 // your parameters.
-func Box(t *testing.T, image string, params ...string) (Container, func()) {
+func Box(t *testing.T, image string, params ...string) Container {
 	if std == nil {
 		panic("You must call conex.Run first. Use TestMain.")
 	}

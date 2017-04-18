@@ -15,8 +15,8 @@ func testPing(t *testing.T) {
 
 	db := 0
 
-	r, done := redis.Box(t, db)
-	defer done()
+	r, c := redis.Box(t, db)
+	defer c.Drop()
 
 	cases := []string{
 		"hello",

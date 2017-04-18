@@ -29,8 +29,8 @@ Here is an example using redis:
 ```go
 func testPing(t *testing.T) {
   redisDb: = 0
-  client, done := redis.Box(t, redisDb)
-  defer done() // Return the container.
+  client, container := redis.Box(t, redisDb)
+  defer container.Drop() // Return the container.
 
   // here we can simply use client which is a go-redis
   // client.
@@ -47,39 +47,39 @@ want, they will all have appropriate names that consist of a uniq id per test, y
 package example_test
 
 import (
-	"os"
-	"testing"
+  "os"
+  "testing"
 
-	"github.com/omeid/conex"
-	"github.com/omeid/conex/echo"
-	echolib "github.com/omeid/echo"
+  "github.com/omeid/conex"
+  "github.com/omeid/conex/echo"
+  echolib "github.com/omeid/echo"
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(conex.Run(m))
+  os.Exit(conex.Run(m))
 }
 
 func TestEcho(t *testing.T) {
-	reverse := true
+  reverse := true
 
-	e, done := echo.Box(t, reverse)
-	defer done()
+  e, container := echo.Box(t, reverse)
+  defer container.Drop() // Return the container.
 
-	say := "hello"
-	expect := say
-	if reverse {
-		expect = echolib.Reverse(say)
-	}
+  say := "hello"
+  expect := say
+  if reverse {
+    expect = echolib.Reverse(say)
+  }
 
-	reply, err := e.Say(say)
+  reply, err := e.Say(say)
 
-	if err != nil {
-		t.Fatal(err)
-	}
+  if err != nil {
+    t.Fatal(err)
+  }
 
-	if reply != expect {
-		t.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
-	}
+  if reply != expect {
+    t.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
+  }
 
 }
 
@@ -109,10 +109,10 @@ Status: Downloaded newer image for omeid/echo:http
 === conex: Starting your tests.
 === RUN   TestEcho
 --- PASS: TestEcho (0.55s)
-	conex.go:11: creating (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
-	conex.go:11: started (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
+      conex.go:11: creating (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
+      conex.go:11: started (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
 PASS
-ok  	test	33.753s
+ok    test  33.753s
 ```
 
 ## Drivers Packages
@@ -132,13 +132,15 @@ func init() {
 }
 ```
 
-Then export a box function that returns a client connect to the container and return that with the done func.
+Then request a container with the required image from conex and setup a client
+that is connected to the container you created.
+Return the client and the container.
 
 ```go
 // Box returns an connect to an echo container based on
 // your provided tags.
-func Box(t *testing.T, optionally SomeOptions) (your.Client, func()) {
-  c, done := conex.Box(t, Image)
+func Box(t *testing.T, optionally SomeOptions) (your.Client, conex.Container)) {
+  c, con := conex.Box(t, Image)
 
   opt := &your.Options{
     Addr: c.Address(),
@@ -147,7 +149,7 @@ func Box(t *testing.T, optionally SomeOptions) (your.Client, func()) {
 
   client := redis.NewClient(opt)
 
-  return client, done
+  return client, con
 }
 
 ```

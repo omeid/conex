@@ -20,8 +20,8 @@ func TestEcho4(t *testing.T) { t.Parallel(); echoTest(t, true) }
 
 func echoTest(t *testing.T, reverse bool) {
 
-	e, done := echo.Box(t, reverse)
-	defer done()
+	e, c := echo.Box(t, reverse)
+	defer c.Drop()
 
 	cases := []string{
 		"hello",
