@@ -8,6 +8,17 @@ var std Manager
 
 var requiredImages = []func() string{}
 
+var (
+	// FailReturnCode is used as status code when conex fails to setup during Run.
+	// This does not override the return value of testing.M.Run, only when conex
+	// fails to even testing.M.Run.
+	FailReturnCode = 255
+	// PullImages dictates whatever the Manager should attempt to pull the images
+	// on run or simply ensure they exist.
+	// Note: Pulling images may result into updates.
+	PullImages = true
+)
+
 // Require adds the image name returned by the provided functions
 // to the list of images pull by the default Manager when Run is
 // called. Used by driver packages, see conex/redis, conex/rethink.
@@ -23,7 +34,7 @@ func Run(m *testing.M, images ...string) int {
 		images = append(images, i())
 	}
 
-	std = New(images...)
+	std = New(FailReturnCode, PullImages, images...)
 
 	return std.Run(m, images...)
 }

@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// We keep logger here because the filename is show along the logs, this means
-// conex.go is put before each log makes the source more clear to the user.
+// We keep logger here because the filename is shown along with the logs,
+// this means that conex.go is put right before each log in tests which
+// makes the source of the log more clear to the user.
 func logf(t *testing.T, f string, args ...interface{}) {
 	t.Logf(f, args...)
 }
@@ -16,7 +17,7 @@ func fatalf(t *testing.T, f string, args ...interface{}) {
 	t.Fatalf(f, args...)
 }
 
-// Manager the conex container manager.
+// Manager is the conex container manager.
 type Manager interface {
 	Run(m *testing.M, images ...string) int
 	Box(t *testing.T, config *Config) Container

@@ -10,6 +10,10 @@ import (
 
 const basicImage = "alpine"
 
+func init() {
+	// conex.PullImages = false
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(conex.Run(m, basicImage))
 }
