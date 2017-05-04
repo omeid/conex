@@ -1,5 +1,5 @@
 # Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex)  [![Build Status](https://travis-ci.org/omeid/conex.svg?branch=master)](https://travis-ci.org/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
-Conex integrates Docker with `testing` package so you can easily run your integration tests.
+Conex integrates Docker with `testing` package so you can easily run your integration tests and benchmarks.
 
 > Yes, we did hear you like integrations.
 
@@ -34,7 +34,7 @@ In our tests, we will use `driver` packages, these packages register their requi
 Here is an example using redis:
 
 ```go
-func testPing(t testing.TB) {
+func testPing(t *testing.T) {
   redisDb: = 0
   client, container := redis.Box(t, redisDb)
   defer container.Drop() // Return the container.
@@ -66,7 +66,7 @@ func TestMain(m *testing.M) {
   os.Exit(conex.Run(m))
 }
 
-func TestEcho(t testing.TB) {
+func TestEcho(t *testing.T) {
   reverse := true
 
   e, container := echo.Box(t, reverse)
