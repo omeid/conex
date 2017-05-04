@@ -8,19 +8,19 @@ import (
 // We keep logger here because the filename is shown along with the logs,
 // this means that conex.go is put right before each log in tests which
 // makes the source of the log more clear to the user.
-func logf(t *testing.T, f string, args ...interface{}) {
+func logf(t testing.TB, f string, args ...interface{}) {
 	t.Logf(f, args...)
 }
 
 //Same story as above.
-func fatalf(t *testing.T, f string, args ...interface{}) {
+func fatalf(t testing.TB, f string, args ...interface{}) {
 	t.Fatalf(f, args...)
 }
 
 // Manager is the conex container manager.
 type Manager interface {
 	Run(m *testing.M, images ...string) int
-	Box(t *testing.T, config *Config) Container
+	Box(t testing.TB, config *Config) Container
 }
 
 // Container is a simple interface to a docker

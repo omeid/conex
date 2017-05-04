@@ -18,7 +18,7 @@ func init() {
 
 // Box returns an echo client connect to an echo container based on
 // your provided tags.
-func Box(t *testing.T, reverse bool) (echo.Echo, conex.Container) {
+func Box(t testing.TB, reverse bool) (echo.Echo, conex.Container) {
 	params := []string{}
 
 	if reverse {

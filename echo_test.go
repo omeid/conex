@@ -51,3 +51,26 @@ func echoTest(t *testing.T, reverse bool) {
 	}
 
 }
+
+func BenchmarkEcho(b *testing.B) {
+
+	reverse := false
+	say := "hello"
+	expect := say
+
+	e, c := echo.Box(b, reverse)
+	defer c.Drop()
+
+	for n := 0; n < b.N; n++ {
+
+		reply, err := e.Say(say)
+
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		if reply != expect {
+			b.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
+		}
+	}
+}

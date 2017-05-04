@@ -5,7 +5,14 @@ Conex integrates Docker with `testing` package so you can easily run your integr
 
 ## Why?
 
-Integration tests are very good value, they're easy to write and help you catch bugs in a more realistic environment and with most every service and database avaliable as a Docker Container, docker is a great option to run your service dependencies in a clear state. Conex is here to make it simpler. 
+Integration tests are very good value, they're easy to write and help you catch bugs in a more realistic environment and with most every service and database avaliable as a Docker Container, docker is a great option to run your service dependencies in a clear state. Conex is here to make it simpler by taking care of the following tasks:
+
+- starting containers
+- automatically creating uniqe names to avoid conflicts
+- deleting containers
+- pull or check images before running tests
+
+On top of that, Conex providers a driver convention to simplify code reuse across projects.
 
 
 ## How?
@@ -27,7 +34,7 @@ In our tests, we will use `driver` packages, these packages register their requi
 Here is an example using redis:
 
 ```go
-func testPing(t *testing.T) {
+func testPing(t testing.TB) {
   redisDb: = 0
   client, container := redis.Box(t, redisDb)
   defer container.Drop() // Return the container.
@@ -40,8 +47,8 @@ func testPing(t *testing.T) {
 ## Example
 Here is a complete example using a simple Echo service.
 
-Please note that you can ask for as many containers and different services as you
-want, they will all have appropriate names that consist of a uniq id per test, your package path, test name, container, and a serial indicator starting from 0. Not to worry about containers or tests stepping over each other.
+You can create many containers and different services as you want, you can also run multiple tests in parallel without conflict, conex
+creates the containers with uniqe names that consist of the test id, package path, test name, container, and an ordinal index starting from 0. This avoids container name conflicts across the board.
 
 ```go
 package example_test
@@ -59,7 +66,7 @@ func TestMain(m *testing.M) {
   os.Exit(conex.Run(m))
 }
 
-func TestEcho(t *testing.T) {
+func TestEcho(t testing.TB) {
   reverse := true
 
   e, container := echo.Box(t, reverse)
@@ -81,6 +88,30 @@ func TestEcho(t *testing.T) {
     t.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
   }
 
+}
+
+// You can also use containers in benchmarks!
+func BenchmarkEcho(b *testing.B) {
+
+	reverse := false
+	say := "hello"
+	expect := say
+
+	e, c := echo.Box(b, reverse)
+	defer c.Drop()
+
+	for n := 0; n < b.N; n++ {
+
+		reply, err := e.Say(say)
+
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		if reply != expect {
+			b.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
+		}
+	}
 }
 
 ```
@@ -139,7 +170,7 @@ Return the client and the container.
 ```go
 // Box returns an connect to an echo container based on
 // your provided tags.
-func Box(t *testing.T, optionally SomeOptions) (your.Client, conex.Container)) {
+func Box(t testing.TB, optionally SomeOptions) (your.Client, conex.Container)) {
 
   conf := &conex.Config{
     Image: Image,

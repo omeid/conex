@@ -14,7 +14,7 @@ func init() {
 
 type container struct {
 	j types.ContainerJSON
-	t *testing.T
+	t testing.TB
 	c *docker.Client
 }
 
