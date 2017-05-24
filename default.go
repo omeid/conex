@@ -1,8 +1,6 @@
 package conex
 
-import (
-	"testing"
-)
+import "testing"
 
 var std Manager
 

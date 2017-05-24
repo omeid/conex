@@ -1,9 +1,7 @@
 // Package conex provides easy to use Docker Integration with Testing.
 package conex
 
-import (
-	"testing"
-)
+import "testing"
 
 // We keep logger here because the filename is shown along with the logs,
 // this means that conex.go is put right before each log in tests which
@@ -45,4 +43,5 @@ type Config struct {
 	Hostname   string   // Hostname
 	Domainname string   // Domainname
 	User       string   // User that will run the command(s) inside the container, also support user:group
+	Expose     []string // Ports to expose, supports the docker command line style syntax proto/port or just port which defaults to tcp
 }

@@ -2,10 +2,10 @@ package conex
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	"github.com/docker/docker/api/types"
-	docker "github.com/docker/docker/client"
+	docker "github.com/fsouza/go-dockerclient"
 )
 
 func init() {
@@ -13,9 +13,10 @@ func init() {
 }
 
 type container struct {
-	j types.ContainerJSON
-	t testing.TB
+	j *docker.Container
 	c *docker.Client
+
+	t testing.TB
 }
 
 func (c *container) ID() string {
@@ -35,17 +36,24 @@ func (c *container) Address() string {
 }
 
 func (c *container) Ports() []string {
+	// return c.j.NetworkSettings.Ports
 	return nil
 }
 
 func (c *container) Drop() {
-	err := c.c.ContainerStop(context.Background(), c.j.ID, nil)
+	err := c.c.StopContainer(c.j.ID, 10)
 
 	if err != nil {
+		fmt.Println("failed ", c.j.ID)
 		c.t.Fatal(err)
 	}
 
-	err = c.c.ContainerRemove(context.Background(), c.j.ID, types.ContainerRemoveOptions{})
+	err = c.c.RemoveContainer(docker.RemoveContainerOptions{
+		ID:            c.j.ID,
+		RemoveVolumes: true,
+		Force:         true,
+		Context:       context.Background(),
+	})
 	if err != nil {
 		c.t.Fatal(err)
 	}

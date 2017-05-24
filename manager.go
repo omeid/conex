@@ -1,7 +1,6 @@
 package conex
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,14 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/strslice"
-	"github.com/docker/docker/cli/command"
-	docker "github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/stringid"
 	units "github.com/docker/go-units"
+	docker "github.com/fsouza/go-dockerclient"
 )
 
 // New returns a new conex manager.
@@ -48,13 +42,12 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	mn.name, err = testContainersPrefix()
 
 	if err != nil {
-		fmt.Println(err)
 		return mn.retcode
 	}
 
 	mn.images = append(mn.images, images...)
 
-	mn.client, err = docker.NewEnvClient()
+	mn.client, err = docker.NewClientFromEnv()
 	if err != nil {
 		fmt.Println(err)
 		return mn.retcode
@@ -107,32 +100,38 @@ func (mn *manager) Box(t testing.TB, conf *Config) Container {
 
 	logf(t, "creating (%s) as %s", cname, name)
 
-	c, err := mn.client.ContainerCreate(
-		context.Background(),
-		&dockercontainer.Config{
-			Image:      conf.Image,
-			Cmd:        strslice.StrSlice(conf.Cmd),
-			Env:        conf.Env,
-			Hostname:   conf.Hostname,
-			Domainname: conf.Domainname,
-			User:       conf.User,
+	exposedPorts := make(map[docker.Port]struct{})
+	for _, port := range conf.Expose {
+		exposedPorts[docker.Port(port)] = struct{}{}
+	}
+
+	c, err := mn.client.CreateContainer(
+		docker.CreateContainerOptions{
+			Name: name,
+			Config: &docker.Config{
+				Image:        conf.Image,
+				Cmd:          conf.Cmd,
+				Env:          conf.Env,
+				Hostname:     conf.Hostname,
+				Domainname:   conf.Domainname,
+				User:         conf.User,
+				Tty:          true,
+				ExposedPorts: exposedPorts,
+			},
 		},
-		nil,
-		nil,
-		name,
 	)
 	if err != nil {
 		fatalf(t, "Failed to create container: %s", err)
 	}
 
-	err = mn.client.ContainerStart(context.Background(), c.ID, types.ContainerStartOptions{})
+	err = mn.client.StartContainer(c.ID, nil)
 	if err != nil {
 		fatalf(t, "Failed to start container: %v", err)
 	}
 
 	logf(t, "started (%s) as %s", cname, name)
 
-	cjson, err := mn.client.ContainerInspect(context.Background(), c.ID)
+	cjson, err := mn.client.InspectContainer(c.ID)
 
 	if err != nil {
 		fatalf(t, "Failed to inspect: %v", err)
@@ -153,12 +152,22 @@ func (mn *manager) pull(images []string) error {
 
 	for i, image := range images {
 		fmt.Printf("--- Pulling %s (%d of %d)\n", image, i+1, l)
-		output, err := mn.client.ImagePull(context.Background(), image, types.ImagePullOptions{})
+
+		repo, tag := docker.ParseRepositoryTag(image)
+
+		err := mn.client.PullImage(
+			docker.PullImageOptions{
+				Repository:   repo,
+				Tag:          tag,
+				OutputStream: os.Stdout,
+			},
+			docker.AuthConfiguration{},
+		)
+
 		if err != nil {
 			return err
 		}
 
-		jsonmessage.DisplayJSONMessagesToStream(output, command.NewOutStream(os.Stdout), nil)
 	}
 
 	fmt.Printf("=== conex: Pulling Done\n")
@@ -180,12 +189,15 @@ func (mn *manager) ensure(images []string) error {
 
 	for index, ref := range images {
 
-		img, _, err := mn.client.ImageInspectWithRaw(context.Background(), ref)
+		img, err := mn.client.InspectImage(ref)
 		if err != nil {
 			return err
 		}
 
-		printImg(width, ref, index, is, img)
+		err = printImg(width, ref, index, is, img)
+		if err != nil {
+			return err
+		}
 
 	}
 
@@ -198,12 +210,7 @@ func (mn *manager) cleanup() error {
 	return nil
 }
 
-func printImg(width int, ref string, index int, total int, img types.ImageInspect) error {
-
-	createdAt, err := time.Parse(time.RFC3339Nano, img.Created)
-	if err != nil {
-		return err
-	}
+func printImg(width int, ref string, index int, total int, img *docker.Image) error {
 
 	fmt.Printf("--- Found (%d of %d) %-*s %s %10s ago\n",
 		index+1,
@@ -211,7 +218,7 @@ func printImg(width int, ref string, index int, total int, img types.ImageInspec
 		width,
 		ref,
 		stringid.TruncateID(img.ID),
-		units.HumanDuration(time.Now().UTC().Sub(createdAt)),
+		units.HumanDuration(time.Now().UTC().Sub(img.Created)),
 	)
 
 	return nil
