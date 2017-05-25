@@ -20,7 +20,7 @@ func testSQLPing(t *testing.T) {
 
 	db, c := postgres.Box(t, config)
 	_ = c
-	// defer c.Drop()
+	defer c.Drop()
 
 	err := db.Ping()
 
