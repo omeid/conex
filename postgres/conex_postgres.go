@@ -16,6 +16,9 @@ var (
 	Image = "postgres:alpine"
 	// Port used for connect to redis.
 	Port = "5432"
+
+	// PostgresUpWaitTime dectiates how long we should wait for post Postgresql to accept connections on {{Port}}.
+	PostgresUpWaitTime = 10 * time.Second
 )
 
 func init() {
@@ -55,14 +58,14 @@ func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	config.host = c.Address()
 	config.port = Port
 
-	t.Logf("Waiting for Postgrestions to accept connections")
+	t.Logf("Waiting for Postgresql to accept connections")
 
-	err := c.Wait(Port, 10*time.Second)
+	err := c.Wait(Port, PostgresUpWaitTime)
 	if err != nil {
 		t.Fatal("Postgres failed to start.", err)
 	}
 
-	t.Logf("\n Postgres is up. Now connecting.\n")
+	t.Log("Postgresql is now accepting connections")
 	db, err := sql.Open("postgres", config.url())
 
 	if err != nil {
