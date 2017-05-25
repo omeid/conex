@@ -3,7 +3,6 @@ package postgres
 import (
 	"database/sql"
 	"fmt"
-	"net"
 	"testing"
 	"time"
 
@@ -27,13 +26,18 @@ func init() {
 type Config struct {
 	User     string
 	Password string
-	Database string
+	Database string // defaults to `postgres` as service db.
 
 	host string
 	port string
 }
 
 func (c *Config) url() string {
+
+	if c.Database == "" {
+		c.Database = "postgres"
+	}
+
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		c.User, c.Password, c.host, c.port, c.Database,
@@ -51,28 +55,11 @@ func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	config.host = c.Address()
 	config.port = Port
 
-	addr := fmt.Sprintf("%s:%s", config.host, config.port)
-
-	var ok bool
-
 	t.Logf("Waiting for Postgrestions to accept connections")
-	for i := 0; i < 20; i++ {
 
-		conn, err := net.Dial("tcp", addr)
-		if err == nil {
-			err = conn.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			ok = true
-			break
-		}
-
-		time.Sleep(time.Second)
-	}
-
-	if !ok {
-		t.Fatal("Postgres failed to start.")
+	err := c.Wait(Port, 10*time.Second)
+	if err != nil {
+		t.Fatal("Postgres failed to start.", err)
 	}
 
 	t.Logf("\n Postgres is up. Now connecting.\n")

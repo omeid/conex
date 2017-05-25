@@ -1,7 +1,10 @@
 // Package conex provides easy to use Docker Integration with Testing.
 package conex
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // We keep logger here because the filename is shown along with the logs,
 // this means that conex.go is put right before each log in tests which
@@ -31,6 +34,7 @@ type Container interface {
 
 	Drop()
 
+	Wait(port string, timeout time.Duration) error // Wait for the port to respond to tcp/udp.
 	//TODO: Yo.
 	// Ports() []string
 }

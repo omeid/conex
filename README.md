@@ -11,6 +11,8 @@ Integration tests are very good value, they're easy to write and help you catch 
 - automatically creating uniqe names to avoid conflicts
 - deleting containers
 - pull or check images before running tests
+- Wait for a service (tcp, udp) port to accept connections
+- Expose ports
 
 On top of that, Conex providers a driver convention to simplify code reuse across projects.
 

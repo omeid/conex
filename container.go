@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
 )
@@ -58,4 +59,8 @@ func (c *container) Drop() {
 		c.t.Fatal(err)
 	}
 
+}
+
+func (c *container) Wait(port string, timeout time.Duration) error {
+	return wait(c.Address(), port, timeout)
 }
