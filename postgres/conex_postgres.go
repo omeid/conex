@@ -61,7 +61,9 @@ func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	t.Logf("Waiting for Postgresql to accept connections")
 
 	err := c.Wait(Port, PostgresUpWaitTime)
+
 	if err != nil {
+		c.Drop() // return the container
 		t.Fatal("Postgres failed to start.", err)
 	}
 
@@ -69,6 +71,7 @@ func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	db, err := sql.Open("postgres", config.url())
 
 	if err != nil {
+		c.Drop() // return the container
 		t.Fatal(err)
 	}
 
