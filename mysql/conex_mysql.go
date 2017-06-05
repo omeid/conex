@@ -17,7 +17,7 @@ var (
 	Port = "3306"
 
 	// MySQLUpWaitTime dictates how long we should wait for post MySQL to accept connections on {{Port}}.
-	MySQLUpWaitTime = 10 * time.Second
+	MySQLUpWaitTime = 15 * time.Second
 )
 
 func init() {
