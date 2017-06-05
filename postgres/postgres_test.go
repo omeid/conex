@@ -12,7 +12,7 @@ func TestMain(m *testing.M) {
 	os.Exit(conex.Run(m))
 }
 
-func TestMySQL(t *testing.T) {
+func TestPostgres(t *testing.T) {
 
 	sql, con := postgres.Box(t, &postgres.Config{
 		Database: "postgres",
