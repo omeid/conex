@@ -80,7 +80,7 @@ func (c *Config) env() []string {
 	return env
 }
 
-// Box returns an echo client connect to an echo container based on your provided tags.
+// Box returns a MySQL client.
 func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	c := conex.Box(t, &conex.Config{
 		Image:  Image,
