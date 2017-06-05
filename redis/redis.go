@@ -19,8 +19,8 @@ func init() {
 	conex.Require(func() string { return Image })
 }
 
-// Box returns an echo client connect to an echo container based on
-// your provided tags.
+// Box returns a redis.Client and the container running the redis
+// server. It calls t.Fatal on errors.
 func Box(t testing.TB, db int) (*redis.Client, conex.Container) {
 	c := conex.Box(t, &conex.Config{
 		Image: Image,

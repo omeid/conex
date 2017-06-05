@@ -47,8 +47,8 @@ func (c *Config) url() string {
 	)
 }
 
-// Box returns an echo client connect to an echo container based on
-// your provided tags.
+// Box returns an sql.DB connection and the container running the Postgresql
+// instance. It will call t.Fatal on errors.
 func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	c := conex.Box(t, &conex.Config{
 		Image:  Image,
