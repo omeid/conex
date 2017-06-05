@@ -59,7 +59,7 @@ func (c *Config) env() []string {
 	if c.User == "root" && c.Password == "" {
 		env = append(env, fmt.Sprintf("MYSQL_ALLOW_EMPTY_PASSWORD=yes"))
 	} else {
-		env = append(env, fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", c.RootPassword))
+		env = append(env, fmt.Sprintf("MYSQL_PASSWORD=%s", c.Password))
 	}
 
 	if c.User != "" && c.User != "root" {
@@ -101,7 +101,7 @@ func Box(t testing.TB, config *Config) (*sql.DB, conex.Container) {
 	}
 
 	t.Log("MySQL is now accepting connections")
-	db, err := sql.Connnect("mysql", config.url())
+	db, err := sql.Open("mysql", config.url())
 
 	if err != nil {
 		c.Drop()
