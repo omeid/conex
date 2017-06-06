@@ -12,4 +12,6 @@ services:
 
 script:
   - ./ci/update_docker.sh
+  - ./ci/get_boxes.sh
   - go test -v ./...
+  - go test -v github.com/conex/...

@@ -14,12 +14,18 @@ import (
 var (
 	// Image to use for the box.
 	Image = "postgres:alpine"
-	// Port used for connect to redis.
+	// Port used for connect to postgres.
 	Port = "5432"
 
 	// PostgresUpWaitTime dectiates how long we should wait for post Postgresql to accept connections on {{Port}}.
 	PostgresUpWaitTime = 10 * time.Second
 )
+
+func init() {
+	fmt.Println("!!! WARNING !!!")
+	fmt.Println("github.com/omeid/conex/postgres has moved to  github.com/conex/postgres")
+	fmt.Println("This package will be removed soon.")
+}
 
 func init() {
 	conex.Require(func() string { return Image })

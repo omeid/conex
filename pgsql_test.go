@@ -3,7 +3,7 @@ package conex_test
 import (
 	"testing"
 
-	"github.com/omeid/conex/postgres"
+	"github.com/conex/postgres"
 )
 
 func TestPGsql1(t *testing.T) { t.Parallel(); testSQLPing(t) }

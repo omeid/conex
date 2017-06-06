@@ -8,6 +8,12 @@ import (
 	"github.com/omeid/conex"
 )
 
+func init() {
+	fmt.Println("!!! WARNING !!!")
+	fmt.Println("github.com/omeid/conex/redis has moved to  github.com/conex/redis")
+	fmt.Println("This package will be removed soon.")
+}
+
 var (
 	// Image to use for the box.
 	Image = "redis:alpine"

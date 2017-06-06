@@ -11,7 +11,7 @@ import (
 
 // ErrPortWaitTimedOut is returned when Container.Wait reaches maxWait before the
 // port accepts connections.
-var ErrPortWaitTimedOut = errors.New("waiting on port timedout")
+var ErrPortWaitTimedOut = errors.New("wait timeout")
 
 func wait(host string, port string, maxWait time.Duration) error {
 

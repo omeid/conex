@@ -3,7 +3,7 @@ package conex_test
 import (
 	"testing"
 
-	"github.com/omeid/conex/redis"
+	"github.com/conex/redis"
 )
 
 func TestRedis1(t *testing.T) { t.Parallel(); testPing(t) }

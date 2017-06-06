@@ -1,6 +1,7 @@
 package rethinkdb
 
 import (
+	"fmt"
 	"testing"
 
 	gorethink "gopkg.in/gorethink/gorethink.v3"
@@ -13,6 +14,12 @@ var Image = "rethinkdb"
 
 func init() {
 	conex.Require(func() string { return Image })
+}
+
+func init() {
+	fmt.Println("!!! WARNING !!!")
+	fmt.Println("github.com/omeid/conex/redis has moved to  github.com/conex/redis")
+	fmt.Println("This package will be removed soon.")
 }
 
 // Box returns a RethinkDB client connect to a RethinkDB
