@@ -1,5 +1,5 @@
 # Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex)  [![Build Status](https://travis-ci.org/omeid/conex.svg?branch=master)](https://travis-ci.org/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
-Conex integrates Docker with `testing` package so you can easily run your integration tests and benchmarks.
+Conex integrates [Go](https://golang.org) `testing` with [Docker](https://docker.com) so you can easily run your integration tests and benchmarks.
 
 > Yes, we did hear you like integrations.
 
