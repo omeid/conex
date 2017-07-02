@@ -101,8 +101,23 @@ func (mn *manager) Box(t testing.TB, conf *Config) Container {
 	logf(t, "creating (%s) as %s", cname, name)
 
 	exposedPorts := make(map[docker.Port]struct{})
+	portBindings := make(map[docker.Port][]docker.PortBinding)
 	for _, port := range conf.Expose {
-		exposedPorts[docker.Port(port)] = struct{}{}
+		bindings := strings.Split(port, ":")
+
+		if len(bindings) == 1 {
+			exposedPorts[docker.Port(port)] = struct{}{}
+			continue
+		}
+
+		dockerPort := docker.Port(bindings[1])
+		host := docker.PortBinding{
+			HostIP:   "0.0.0.0",
+			HostPort: bindings[0],
+		}
+
+		exposedPorts[dockerPort] = struct{}{}
+		portBindings[dockerPort] = []docker.PortBinding{host}
 	}
 
 	c, err := mn.client.CreateContainer(
@@ -117,6 +132,9 @@ func (mn *manager) Box(t testing.TB, conf *Config) Container {
 				User:         conf.User,
 				Tty:          true,
 				ExposedPorts: exposedPorts,
+			},
+			HostConfig: &docker.HostConfig{
+				PortBindings: portBindings,
 			},
 		},
 	)
