@@ -203,6 +203,10 @@ func Box(t testing.TB, optionally SomeOptions) (your.Client, conex.Container)) {
 }
 
 ```
+### Caveat
+
+Only native docker is support, so Docker for Mac and Docker Machine in general is not supported because of how port forwarding and port maping works.
+
 
 ### Is it good?
 Yes.
