@@ -1,13 +1,14 @@
 ---
 language: go
 
-go: 
-  - 1.11.x
-  - master
+go:
+  - "1.21" # Minimum required version (from go.mod)
+  - "1.23" # Latest stable
+  - "master"
 
 services:
   - docker
 
 script:
   - ./ci/get_boxes.sh
-  - go test -v ./...
+  - go test -v -race ./...
