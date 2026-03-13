@@ -13,13 +13,34 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 )
 
+// RunnerType specifies which runner implementation to use.
+type RunnerType string
+
+const (
+	// RunnerNative runs tests on the host with direct container IP access.
+	// This is the default and requires native Docker.
+	RunnerNative RunnerType = "native"
+
+	// RunnerDocker runs containers on a shared network, allowing tests to
+	// work on systems where container IPs are not accessible from the host
+	// (e.g., Docker for Mac, Docker Machine).
+	RunnerDocker RunnerType = "docker"
+)
+
 // New returns a new conex manager.
 func New(retcode int, pullImages bool, images ...string) Manager {
+	return newManager(retcode, pullImages, RunnerNative, "", images...)
+}
+
+// newManager is the internal constructor that accepts all options.
+func newManager(retcode int, pullImages bool, runnerType RunnerType, goImage string, images ...string) Manager {
 	return &manager{
 		retcode:    retcode,
 		pullImages: pullImages,
 		images:     images,
 		counter:    &counter{seqs: make(map[string]int)},
+		runnerType: runnerType,
+		goImage:    goImage,
 	}
 }
 
@@ -27,17 +48,18 @@ type manager struct {
 	retcode    int
 	pullImages bool
 
-	name    string
-	images  []string
-	client  *docker.Client
-	counter *counter
+	name       string
+	images     []string
+	client     *docker.Client
+	counter    *counter
+	runnerType RunnerType
+	runner     Runner
+	goImage    string
 }
 
 // Run prepares a docker client, pulls the provided list of images
 // and then runs your tests.
 func (mn *manager) Run(m *testing.M, images ...string) int {
-	// Pull images
-
 	var err error
 	mn.name, err = testContainersPrefix()
 
@@ -53,6 +75,29 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		return mn.retcode
 	}
 
+	// Create the runner configuration
+	runnerConfig := &RunnerConfig{
+		Client:     mn.client,
+		Name:       mn.name,
+		PullImages: mn.pullImages,
+		Images:     mn.images,
+		RetCode:    mn.retcode,
+		Counter:    mn.counter,
+		GoImage:    mn.goImage,
+	}
+
+	// Create the appropriate runner
+	switch mn.runnerType {
+	case RunnerDocker:
+		mn.runner = NewDockerRunner(runnerConfig)
+		// Add Go image to the list of images to pull for docker runner
+		if mn.goImage != "" {
+			images = append(images, mn.goImage)
+		}
+	default:
+		mn.runner = NewNativeRunner(runnerConfig)
+	}
+
 	if mn.pullImages {
 		err = mn.pull(images)
 	} else {
@@ -66,7 +111,8 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	log.Println() // print a timestamp. Helps to see how long tests take on it's own.
 	fmt.Printf("=== conex: Starting your tests.\n")
-	ret := m.Run()
+
+	ret := mn.runner.Run(m)
 
 	err = mn.cleanup()
 	if err != nil {
@@ -77,9 +123,9 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	return ret
 }
 
-func (mn *manager) boxName(test string, image string, params []string) string {
-	image = strings.Replace(image, ":", ".", -1)
-	image = strings.Replace(image, "/", "_", -1)
+func (mn *manager) boxName(test string, image string) string {
+	image = strings.ReplaceAll(image, ":", ".")
+	image = strings.ReplaceAll(image, "/", "_")
 	name := fmt.Sprintf("%s-%s-%s", mn.name, test, image)
 	name = fmt.Sprintf("%s_%d", name, mn.counter.Count(name))
 
@@ -88,56 +134,8 @@ func (mn *manager) boxName(test string, image string, params []string) string {
 
 // Box returns the required container by image name and any tags.
 func (mn *manager) Box(t testing.TB, conf *Config) Container {
-
-	name := mn.boxName(t.Name(), conf.Image, conf.Cmd)
-
-	// cname is a simple canonical name that includes the
-	// container image name and params.
-	cname := conf.Image
-	if len(conf.Cmd) != 0 {
-		cname = cname + ": " + strings.Join(conf.Cmd, " ")
-	}
-
-	logf(t, "creating (%s) as %s", cname, name)
-
-	exposedPorts := make(map[docker.Port]struct{})
-	for _, port := range conf.Expose {
-		exposedPorts[docker.Port(port)] = struct{}{}
-	}
-
-	c, err := mn.client.CreateContainer(
-		docker.CreateContainerOptions{
-			Name: name,
-			Config: &docker.Config{
-				Image:        conf.Image,
-				Cmd:          conf.Cmd,
-				Env:          conf.Env,
-				Hostname:     conf.Hostname,
-				Domainname:   conf.Domainname,
-				User:         conf.User,
-				Tty:          true,
-				ExposedPorts: exposedPorts,
-			},
-		},
-	)
-	if err != nil {
-		fatalf(t, "Failed to create container: %s", err)
-	}
-
-	err = mn.client.StartContainer(c.ID, nil)
-	if err != nil {
-		fatalf(t, "Failed to start container: %v", err)
-	}
-
-	logf(t, "started (%s) as %s", cname, name)
-
-	cjson, err := mn.client.InspectContainer(c.ID)
-
-	if err != nil {
-		fatalf(t, "Failed to inspect: %v", err)
-	}
-
-	return &container{j: cjson, c: mn.client, t: t}
+	name := mn.boxName(t.Name(), conf.Image)
+	return mn.runner.Box(t, conf, name)
 }
 
 func (mn *manager) pull(images []string) error {
@@ -154,6 +152,9 @@ func (mn *manager) pull(images []string) error {
 		fmt.Printf("--- Pulling %s (%d of %d)\n", image, i+1, l)
 
 		repo, tag := docker.ParseRepositoryTag(image)
+		if tag == "" {
+			tag = "latest"
+		}
 
 		err := mn.client.PullImage(
 			docker.PullImageOptions{
