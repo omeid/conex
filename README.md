@@ -203,10 +203,48 @@ func Box(t testing.TB, optionally SomeOptions) (your.Client, conex.Container)) {
 }
 
 ```
-### Caveat
+### Runners
 
-Only native docker is support, so Docker for Mac and Docker Machine in general is not supported because of how port forwarding and port maping works.
+Conex automatically detects the appropriate runner based on your environment:
 
+- **Linux with local Docker socket**: Uses the native runner (direct container IP access)
+- **macOS, Windows, or remote Docker**: Uses the docker runner (runs tests inside a container)
+
+#### Native Runner
+
+The native runner connects to containers using their direct IP addresses. This is automatically selected on Linux with a local Docker socket.
+
+#### Docker Runner
+
+The docker runner automatically runs your tests inside a Docker container on a shared `conex` network. This is automatically selected on macOS, Windows, or when using a remote Docker host, since container IPs are not directly accessible in these environments.
+
+When using the docker runner, conex will:
+1. Create a `conex` Docker network
+2. Run your test binary inside a Go container on that network
+3. All service containers are also created on the same network
+4. Containers can communicate using their names as hostnames
+
+You can customize the Go image used for running tests:
+
+```go
+func TestMain(m *testing.M) {
+  // Use a specific Go version
+  conex.GoImage = "golang:1.21-alpine"
+  os.Exit(conex.Run(m))
+}
+```
+
+#### Overriding Auto-Detection
+
+You can override the auto-detected runner using the `CONEX_RUNNER` environment variable:
+
+```bash
+# Force native runner
+CONEX_RUNNER=native go test ./...
+
+# Force docker runner
+CONEX_RUNNER=docker go test ./...
+```
 
 ### Is it good?
 Yes.
