@@ -94,7 +94,7 @@ func (r *DockerRunner) runInDocker() int {
 	// Set environment variables
 	env := []string{
 		fmt.Sprintf("%s=1", ConexRunnerEnv),
-		fmt.Sprintf("%s=%s", ConexRunnerEnvVar, string(RunnerDocker)),
+		"CONEX_RUNNER=docker",
 	}
 
 	// Pass through relevant environment variables

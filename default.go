@@ -27,9 +27,6 @@ var (
 	GoImage = "golang:1.22"
 )
 
-// ConexRunnerEnvVar is the environment variable name for overriding the runner.
-const ConexRunnerEnvVar = "CONEX_RUNNER"
-
 // Require adds the image name returned by the provided functions
 // to the list of images pull by the default Manager when Run is
 // called. Used by driver packages, see conex/redis, conex/rethink.
@@ -43,7 +40,7 @@ func Require(images ...func() string) {
 // container IPs are not directly accessible.
 func detectRunner() RunnerType {
 	// Allow explicit override via environment variable
-	if envRunner := os.Getenv(ConexRunnerEnvVar); envRunner != "" {
+	if envRunner := os.Getenv("CONEX_RUNNER"); envRunner != "" {
 		return RunnerType(envRunner)
 	}
 
