@@ -75,6 +75,14 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		return mn.retcode
 	}
 
+	// Ping the Docker server to initialize the client's API version.
+	// This prevents a race condition in go-dockerclient when multiple
+	// goroutines call methods that trigger checkAPIVersion() concurrently.
+	if err := mn.client.Ping(); err != nil {
+		fmt.Println("Failed to ping Docker:", err)
+		return mn.retcode
+	}
+
 	// Create the runner configuration
 	runnerConfig := &RunnerConfig{
 		Client:     mn.client,
