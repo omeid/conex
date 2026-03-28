@@ -159,6 +159,7 @@ ok    test  33.753s
 Conex drivers are simple packages that follow a convention to provide a simple interface to the underlying service run on the container.
 So the user doesn't have to think about containers but the service in their tests.
 
+### Using Registry Images
 
 First, define an image attribute for your package that users can change and register it with conex.
 
@@ -170,6 +171,22 @@ func init() {
   conex.Require(func() string { return Image })
 }
 ```
+
+### Using Dockerfiles
+
+Instead of pulling a pre-built image, you can build one from a Dockerfile. Use a path that starts with `Dockerfile` as the image name:
+
+```go
+var Image = "Dockerfile.myservice"
+
+func init() {
+  conex.Require(func() string { return Image })
+}
+```
+
+Conex detects Dockerfile paths automatically. The Dockerfile is built before tests run, and the resulting image is tagged `conex-build:<name>`. Suffixes are supported: `Dockerfile.ssh`, `Dockerfile.testing`, etc. The Dockerfile path is relative to the test's working directory.
+
+This is useful when you need a custom test image that isn't available on a registry, or when the image setup requires steps that are too slow to run at container startup (like installing packages).
 
 Then request a container with the required image from conex and setup a client
 that is connected to the container you created.

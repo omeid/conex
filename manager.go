@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -87,9 +88,16 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		}
 
 		log.Println()
-		fmt.Printf("=== conex: Starting your tests.\n")
+		fmt.Fprintf(os.Stderr, "=== conex: Starting your tests.\n")
 		ret := mn.runner.Run(m)
 		return ret
+	}
+
+	// Ensure DOCKER_API_VERSION is set so go-dockerclient negotiates
+	// correctly. Without it, the client defaults to 1.25 which is
+	// rejected by modern Docker daemons.
+	if os.Getenv("DOCKER_API_VERSION") == "" {
+		os.Setenv("DOCKER_API_VERSION", "1.43")
 	}
 
 	mn.client, err = docker.NewClientFromEnv()
@@ -141,7 +149,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	}
 
 	log.Println() // print a timestamp. Helps to see how long tests take on it's own.
-	fmt.Printf("=== conex: Starting your tests.\n")
+	fmt.Fprintf(os.Stderr, "=== conex: Starting your tests.\n")
 
 	ret := mn.runner.Run(m)
 
@@ -165,8 +173,15 @@ func (mn *manager) boxName(test string, image string) string {
 
 // Box returns the required container by image name and any tags.
 func (mn *manager) Box(t testing.TB, conf *Config) Container {
-	name := mn.boxName(t.Name(), conf.Image)
-	return mn.runner.Box(t, conf, name)
+	// If image is a Dockerfile, resolve to the built tag.
+	resolvedConf := conf
+	if isDockerfile(conf.Image) {
+		copy := *conf
+		copy.Image = dockerfileTag(conf.Image)
+		resolvedConf = &copy
+	}
+	name := mn.boxName(t.Name(), resolvedConf.Image)
+	return mn.runner.Box(t, resolvedConf, name)
 }
 
 func (mn *manager) pull(images []string) error {
@@ -174,38 +189,92 @@ func (mn *manager) pull(images []string) error {
 		return nil
 	}
 
-	log.Println() // Print a timestamp, handy to check if something is stack.
-	fmt.Printf("=== conex: Pulling Images\n")
+	var pullImages []string
+	var buildImages []string
 
-	l := len(images)
-
-	for i, image := range images {
-		fmt.Printf("--- Pulling %s (%d of %d)\n", image, i+1, l)
-
-		repo, tag := docker.ParseRepositoryTag(image)
-		if tag == "" {
-			tag = "latest"
+	for _, image := range images {
+		if isDockerfile(image) {
+			buildImages = append(buildImages, image)
+		} else {
+			pullImages = append(pullImages, image)
 		}
-
-		err := mn.client.PullImage(
-			docker.PullImageOptions{
-				Repository:   repo,
-				Tag:          tag,
-				OutputStream: os.Stdout,
-			},
-			docker.AuthConfiguration{},
-		)
-
-		if err != nil {
-			return err
-		}
-
 	}
 
-	fmt.Printf("=== conex: Pulling Done\n")
-	log.Println() // Helps seeing how long the tests take.
+	if len(pullImages) > 0 {
+		log.Println()
+		fmt.Fprintf(os.Stderr, "=== conex: Pulling Images\n")
+
+		l := len(pullImages)
+		for i, image := range pullImages {
+			fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", image, i+1, l)
+
+			repo, tag := docker.ParseRepositoryTag(image)
+			if tag == "" {
+				tag = "latest"
+			}
+
+			err := mn.client.PullImage(
+				docker.PullImageOptions{
+					Repository:   repo,
+					Tag:          tag,
+					OutputStream: os.Stderr,
+				},
+				docker.AuthConfiguration{},
+			)
+
+			if err != nil {
+				return err
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "=== conex: Pulling Done\n")
+		log.Println()
+	}
+
+	if len(buildImages) > 0 {
+		log.Println()
+		fmt.Fprintf(os.Stderr, "=== conex: Building Images\n")
+
+		for i, image := range buildImages {
+			tag := dockerfileTag(image)
+			fmt.Fprintf(os.Stderr, "--- Building %s as %s (%d of %d)\n", image, tag, i+1, len(buildImages))
+
+			dir := filepath.Dir(image)
+			dockerfileName := filepath.Base(image)
+
+			err := mn.client.BuildImage(docker.BuildImageOptions{
+				Name:         tag,
+				Dockerfile:   dockerfileName,
+				ContextDir:   dir,
+				OutputStream: os.Stderr,
+			})
+
+			if err != nil {
+				return fmt.Errorf("build %s: %w", image, err)
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "=== conex: Building Done\n")
+		log.Println()
+	}
 
 	return nil
+}
+
+// isDockerfile returns true if the image string looks like a path to a
+// Dockerfile rather than a registry image reference.
+func isDockerfile(image string) bool {
+	base := filepath.Base(image)
+	return strings.HasPrefix(base, "Dockerfile")
+}
+
+// dockerfileTag generates a conex image tag from a Dockerfile path.
+// e.g. "./testdata/Dockerfile.ssh" -> "conex-build:dockerfile-ssh"
+func dockerfileTag(path string) string {
+	base := filepath.Base(path)
+	base = strings.ToLower(base)
+	base = strings.ReplaceAll(base, ".", "-")
+	return "conex-build:" + base
 }
 
 func (mn *manager) ensure(images []string) error {
@@ -214,7 +283,7 @@ func (mn *manager) ensure(images []string) error {
 	}
 
 	log.Println() // Print a timestamp, handy to check if something is stack.
-	fmt.Printf("=== conex: Checking for Images\n\n")
+	fmt.Fprintf(os.Stderr, "=== conex: Checking for Images\n\n")
 
 	is := len(images)
 	width := maxWidth(images)
@@ -233,7 +302,7 @@ func (mn *manager) ensure(images []string) error {
 
 	}
 
-	fmt.Printf("\n=== conex: All Images Found.\n")
+	fmt.Fprintf(os.Stderr, "\n=== conex: All Images Found.\n")
 
 	return nil
 }
@@ -249,17 +318,17 @@ func (mn *manager) tartPull(images []string) error {
 	}
 
 	log.Println()
-	fmt.Printf("=== conex: Pulling Tart Images\n")
+	fmt.Fprintf(os.Stderr, "=== conex: Pulling Tart Images\n")
 
 	l := len(images)
 	for i, image := range images {
-		fmt.Printf("--- Pulling %s (%d of %d)\n", image, i+1, l)
+		fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", image, i+1, l)
 		if _, err := tartCmd("pull", image); err != nil {
 			return fmt.Errorf("failed to pull tart image %s: %w", image, err)
 		}
 	}
 
-	fmt.Printf("=== conex: Pulling Done\n")
+	fmt.Fprintf(os.Stderr, "=== conex: Pulling Done\n")
 	log.Println()
 
 	return nil
@@ -267,7 +336,7 @@ func (mn *manager) tartPull(images []string) error {
 
 func printImg(width int, ref string, index int, total int, img *docker.Image) error {
 
-	fmt.Printf("--- Found (%d of %d) %-*s %s %10s ago\n",
+	fmt.Fprintf(os.Stderr, "--- Found (%d of %d) %-*s %s %10s ago\n",
 		index+1,
 		total,
 		width,

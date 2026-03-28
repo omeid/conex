@@ -5,6 +5,10 @@
 ### Added
 - **Tart Runner (Experimental)**: New runner for creating macOS and Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs. VMs are cloned, started, and cleaned up automatically just like Docker containers. Activated via `CONEX_RUNNER=tart`.
 - Support for both macOS (`ghcr.io/cirruslabs/macos-sequoia-base`) and Linux (`ghcr.io/cirruslabs/ubuntu`) Tart images.
+- **Dockerfile Build Support**: Images can now be built from Dockerfiles instead of pulled from a registry. Use a path starting with `Dockerfile` (e.g. `Dockerfile.ssh`, `Dockerfile.testing`) as the image name. Conex detects Dockerfile paths, builds the image before tests run, and tags it automatically.
+
+### Fixed
+- Docker API version negotiation with modern Docker daemons. The client no longer defaults to API version 1.25 which is rejected by Docker >= 1.40.
 
 ## [v0.0.2] - 2026-03-27
 
