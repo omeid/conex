@@ -1,3 +1,5 @@
+//go:build !tart
+
 package conex_test
 
 import (

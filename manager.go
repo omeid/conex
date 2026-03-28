@@ -69,6 +69,29 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	mn.images = append(mn.images, images...)
 
+	// Tart runner doesn't need a Docker client.
+	if mn.runnerType == RunnerTart {
+		runnerConfig := &RunnerConfig{
+			Name:    mn.name,
+			Counter: mn.counter,
+		}
+		mn.runner = NewTartRunner(runnerConfig)
+
+		if mn.pullImages {
+			err = mn.tartPull(images)
+		}
+
+		if err != nil {
+			fmt.Println(err)
+			return mn.retcode
+		}
+
+		log.Println()
+		fmt.Printf("=== conex: Starting your tests.\n")
+		ret := mn.runner.Run(m)
+		return ret
+	}
+
 	mn.client, err = docker.NewClientFromEnv()
 	if err != nil {
 		fmt.Println(err)
@@ -216,6 +239,29 @@ func (mn *manager) ensure(images []string) error {
 }
 
 func (mn *manager) cleanup() error {
+	return nil
+}
+
+// tartPull ensures Tart VM images are available locally by pulling them.
+func (mn *manager) tartPull(images []string) error {
+	if len(images) == 0 {
+		return nil
+	}
+
+	log.Println()
+	fmt.Printf("=== conex: Pulling Tart Images\n")
+
+	l := len(images)
+	for i, image := range images {
+		fmt.Printf("--- Pulling %s (%d of %d)\n", image, i+1, l)
+		if _, err := tartCmd("pull", image); err != nil {
+			return fmt.Errorf("failed to pull tart image %s: %w", image, err)
+		}
+	}
+
+	fmt.Printf("=== conex: Pulling Done\n")
+	log.Println()
+
 	return nil
 }
 

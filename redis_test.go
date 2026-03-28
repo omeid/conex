@@ -1,3 +1,5 @@
+//go:build !tart
+
 package conex_test
 
 import (
@@ -28,7 +30,7 @@ func testPing(t *testing.T) {
 	defer c.Drop()
 
 	// Wait for Redis to be ready
-	t.Log("Waiting for Redis to accept connections")
+	t.Logf("Waiting for Redis to accept connections at %s", c.Address())
 	err := c.Wait("6379", 30*time.Second)
 	if err != nil {
 		t.Fatal("Redis failed to start:", err)

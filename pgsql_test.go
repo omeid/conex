@@ -1,3 +1,5 @@
+//go:build !tart
+
 package conex_test
 
 import (
@@ -31,7 +33,7 @@ func testSQLPing(t *testing.T) {
 	})
 	defer c.Drop()
 
-	t.Log("Waiting for Postgresql to accept connections")
+	t.Logf("Waiting for Postgresql to accept connections at %s", c.Address())
 	err := c.Wait("5432", 30*time.Second)
 	if err != nil {
 		t.Fatal("Postgres failed to start:", err)

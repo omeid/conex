@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [v0.0.3] - 2026-03-28
+
+### Added
+- **Tart Runner (Experimental)**: New runner for creating macOS and Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs. VMs are cloned, started, and cleaned up automatically just like Docker containers. Activated via `CONEX_RUNNER=tart`.
+- Support for both macOS (`ghcr.io/cirruslabs/macos-sequoia-base`) and Linux (`ghcr.io/cirruslabs/ubuntu`) Tart images.
+
+## [v0.0.2] - 2026-03-27
 
 ### Added
 - **Docker Runner**: New runner that automatically runs tests inside a Docker container on a shared network. This enables conex to work on macOS, Windows, and other environments where container IPs are not directly accessible from the host.

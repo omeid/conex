@@ -1,5 +1,5 @@
 # Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex)  [![Build Status](https://travis-ci.org/omeid/conex.svg?branch=master)](https://travis-ci.org/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
-Conex integrates [Go](https://golang.org) `testing` with [Docker](https://docker.com) so you can easily run your integration tests and benchmarks.
+Conex integrates [Go](https://golang.org) `testing` with [Docker](https://docker.com)  and [Tart](https://github.com/cirruslabs/tart) so you can easily run your integration tests and benchmarks.
 
 > Yes, we did hear you like integrations.
 
@@ -231,6 +231,35 @@ func TestMain(m *testing.M) {
   // Use a specific Go version
   conex.GoImage = "golang:1.21-alpine"
   os.Exit(conex.Run(m))
+}
+```
+
+#### Tart Runner (Experimental)
+
+The tart runner creates macOS and Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs. VMs are cloned from base images, started, and deleted automatically just like Docker containers.
+
+```bash
+CONEX_RUNNER=tart go test ./...
+```
+
+Both macOS and Linux images are supported:
+
+Support for running Tart VMs on remote machines via SSH is coming soon.
+
+```go
+var image = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+
+func init() {
+  conex.Require(func() string { return image })
+}
+
+func TestInVM(t *testing.T) {
+  c := conex.Box(t, &conex.Config{
+    Image: image,
+  })
+  defer c.Drop()
+
+  t.Logf("VM running at %s", c.Address())
 }
 ```
 
