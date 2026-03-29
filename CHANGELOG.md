@@ -1,11 +1,13 @@
 # Changelog
 
-## [v0.0.3] - 2026-03-28
+## [v0.0.3] - 2026-03-29
 
 ### Added
 - **Tart Runner (Experimental)**: New runner for creating macOS and Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs. VMs are cloned, started, and cleaned up automatically just like Docker containers. Activated via `CONEX_RUNNER=tart`.
 - Support for both macOS (`ghcr.io/cirruslabs/macos-sequoia-base`) and Linux (`ghcr.io/cirruslabs/ubuntu`) Tart images.
 - **Dockerfile Build Support**: Images can now be built from Dockerfiles instead of pulled from a registry. Use a path starting with `Dockerfile` (e.g. `Dockerfile.ssh`, `Dockerfile.testing`) as the image name. Conex detects Dockerfile paths, builds the image before tests run, and tags it automatically.
+- **Privileged containers**: `Config.Privileged` runs a container in privileged mode (e.g. for Docker-in-Docker).
+- **Volume bind mounts**: `Config.Binds` mounts host paths into containers (e.g. `"/host/path:/container/path"`).
 
 ### Fixed
 - Docker API version negotiation with modern Docker daemons. The client no longer defaults to API version 1.25 which is rejected by Docker >= 1.40.

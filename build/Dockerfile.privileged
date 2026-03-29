@@ -1,0 +1,3 @@
+FROM alpine:3.20
+RUN mkdir -p /test-bind && echo "privileged marker" > /privileged-marker
+CMD ["sleep", "3600"]

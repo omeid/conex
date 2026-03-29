@@ -60,6 +60,10 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 				Tty:          true,
 				ExposedPorts: exposedPorts,
 			},
+			HostConfig: &docker.HostConfig{
+				Privileged: conf.Privileged,
+				Binds:      conf.Binds,
+			},
 		},
 	)
 	if err != nil {

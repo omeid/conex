@@ -41,6 +41,10 @@ func (r *TartRunner) Run(m *testing.M) int {
 // The Config.Image field specifies the Tart VM image to clone from.
 // Cmd, Env, and Expose are supported through tart exec after boot.
 func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
+	if len(conf.Binds) > 0 {
+		fatalf(t, "tart runner does not support Binds (volume mounts)")
+	}
+
 	cname := conf.Image
 	if len(conf.Cmd) != 0 {
 		cname = cname + ": " + strings.Join(conf.Cmd, " ")
@@ -56,22 +60,50 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		fatalf(t, "Failed to clone VM: %s", err)
 	}
 
-	// Start VM in background.
+	// Start VM in background, capturing stderr so we can report
+	// failures that happen after the process is spawned (e.g.
+	// locked keychain, permission errors).
+	var stderr bytes.Buffer
 	cmd := exec.Command("tart", "run", "--no-graphics", vmName)
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		tartCmd("delete", vmName)
 		fatalf(t, "Failed to start VM: %s", err)
 	}
 
+	// Monitor the process so we can detect early exits.
+	exited := make(chan error, 1)
+	go func() {
+		exited <- cmd.Wait()
+	}()
+
+	// Give the process a moment to fail on obvious errors (e.g.
+	// locked keychain) before we start the longer IP-wait loop.
+	select {
+	case err := <-exited:
+		tartCmd("delete", vmName)
+		fatalf(t, "VM process exited immediately: %v: %s", err, stderr.String())
+	case <-time.After(500 * time.Millisecond):
+		// Process still running, proceed.
+	}
+
 	logf(t, "started (%s) as %s", cname, vmName)
 
-	// Wait for VM to get an IP.
-	ip, err := tartIPWait(vmName, 120*time.Second)
+	// Wait for VM to get an IP, aborting early if the process exits.
+	ip, err := tartIPWait(vmName, 120*time.Second, exited)
 	if err != nil {
+		// If the error is from a timeout (process still running), kill it.
+		// If the process already exited, Kill is harmless.
 		cmd.Process.Kill()
-		cmd.Wait()
+		// Wait for the process to finish. The channel may have already
+		// been consumed by tartIPWait (process-exit case), so use a
+		// timeout to avoid blocking forever.
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+		}
 		tartCmd("delete", vmName)
-		fatalf(t, "VM failed to get IP: %s", err)
+		fatalf(t, "VM failed to get IP: %s: %s", err, stderr.String())
 	}
 
 	logf(t, "VM %s has IP %s", vmName, ip)
@@ -81,6 +113,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		image:  conf.Image,
 		ip:     ip,
 		cmd:    cmd,
+		exited: exited,
 		t:      t,
 	}
 
@@ -102,6 +135,7 @@ type tartContainer struct {
 	image  string
 	ip     string
 	cmd    *exec.Cmd
+	exited <-chan error
 	t      testing.TB
 }
 
@@ -124,8 +158,9 @@ func (c *tartContainer) Address() string {
 func (c *tartContainer) Drop() {
 	// Stop the VM.
 	tartCmd("stop", c.vmName)
-	if c.cmd != nil {
-		c.cmd.Wait()
+	if c.exited != nil {
+		// Wait for the background goroutine monitoring cmd.Wait() to finish.
+		<-c.exited
 	}
 
 	// Delete the VM.
@@ -156,13 +191,17 @@ func tartExec(vmName, cmd string) (string, error) {
 }
 
 // tartIPWait waits for a Tart VM to get an IP address.
-func tartIPWait(vmName string, timeout time.Duration) (string, error) {
+// If exited is non-nil it is checked on every tick; a value means the VM
+// process died and there is no point waiting further.
+func tartIPWait(vmName string, timeout time.Duration, exited <-chan error) (string, error) {
 	deadline := time.After(timeout)
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
 
 	for {
 		select {
+		case err := <-exited:
+			return "", fmt.Errorf("VM process exited while waiting for IP: %v", err)
 		case <-deadline:
 			return "", fmt.Errorf("timeout waiting for VM %s IP", vmName)
 		case <-tick.C:

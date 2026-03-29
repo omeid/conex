@@ -154,6 +154,21 @@ PASS
 ok    test  33.753s
 ```
 
+### Advanced Container Options
+
+The `Config` struct supports Docker-specific options for containers that need elevated access:
+
+```go
+c := conex.Box(t, &conex.Config{
+  Image:      "docker:dind",
+  Privileged: true,                              // run in privileged mode (e.g. for Docker-in-Docker)
+  Binds:      []string{"/var/run/docker.sock:/var/run/docker.sock"}, // volume mounts
+  Env:        []string{"DOCKER_TLS_CERTDIR="},
+})
+```
+
+`Privileged` and `Binds` are Docker runner options. The Tart runner ignores them -- VMs are full OS instances that don't need these concepts.
+
 ## Drivers Packages
 
 Conex drivers are simple packages that follow a convention to provide a simple interface to the underlying service run on the container.

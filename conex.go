@@ -13,7 +13,7 @@ func logf(t testing.TB, f string, args ...interface{}) {
 	t.Logf(f, args...)
 }
 
-//Same story as above.
+// Same story as above.
 func fatalf(t testing.TB, f string, args ...interface{}) {
 	t.Fatalf(f, args...)
 }
@@ -48,4 +48,6 @@ type Config struct {
 	Domainname string   // Domainname
 	User       string   // User that will run the command(s) inside the container, also support user:group
 	Expose     []string // Ports to expose, supports the docker command line style syntax proto/port or just port which defaults to tcp
+	Privileged bool     // Run the container in privileged mode
+	Binds      []string // Volume binds (e.g. "/host/path:/container/path")
 }

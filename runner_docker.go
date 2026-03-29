@@ -237,6 +237,8 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 			HostConfig: &docker.HostConfig{
 				NetworkMode:  ConexNetworkName,
 				PortBindings: portBindings,
+				Privileged:   conf.Privileged,
+				Binds:        conf.Binds,
 			},
 		},
 	)
