@@ -16,13 +16,12 @@ var (
 	privilegedImage = "Dockerfile.privileged"
 )
 
-func init() {
-	conex.Require(func() string { return buildImage })
-	conex.Require(func() string { return privilegedImage })
-}
-
 func TestMain(m *testing.M) {
-	os.Exit(conex.Run(m))
+	os.Exit(conex.Run(
+		m,
+		conex.OptRequireImage(buildImage),
+		conex.OptRequireImage(privilegedImage),
+	))
 }
 
 func TestBuildBox(t *testing.T) {

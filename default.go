@@ -8,17 +8,21 @@ import (
 
 var std Manager
 
-var requiredImages = []func() string{}
+var requiredImages []func() string
 
 var (
 	// FailReturnCode is used as status code when conex fails to setup during Run.
 	// This does not override the return value of testing.M.Run, only when conex
 	// fails to even testing.M.Run.
 	FailReturnCode = 255
-	// PullImages dictates whatever the Manager should attempt to pull the images
+
+	// PullImages dictates whether the Manager should attempt to pull images
 	// on run or simply ensure they exist.
-	// Note: Pulling images may result into updates.
 	PullImages = true
+
+	// BuildImages dictates whether the Manager should attempt to build images
+	// on run or simply ensure they exist.
+	BuildImages = true
 
 	// GoImage is the Docker image used to run tests inside a container when
 	// using the Docker runner. This should be a Go image that matches your
@@ -28,7 +32,7 @@ var (
 )
 
 // Require adds the image name returned by the provided functions
-// to the list of images pull by the default Manager when Run is
+// to the list of images pulled by the default Manager when Run is
 // called. Used by driver packages, see conex/redis, conex/rethink.
 func Require(images ...func() string) {
 	requiredImages = append(requiredImages, images...)
@@ -65,17 +69,36 @@ func detectRunner() RunnerType {
 
 // Run prepares a docker client, pulls the provided list of images
 // and then runs your tests.
-func Run(m *testing.M, images ...string) int {
-
-	for _, i := range requiredImages {
-		images = append(images, i())
-	}
+func Run(m *testing.M, opts ...Option) int {
+	images := requiredImageRefs()
 
 	runnerType := detectRunner()
 
-	std = newManager(FailReturnCode, PullImages, runnerType, GoImage, images...)
+	// Default config
+	conf := &managerConfig{
+		runner:      runnerType,
+		images:      images,
+		retcode:     FailReturnCode,
+		pullImages:  PullImages,
+		buildImages: BuildImages,
+		goImage:     GoImage,
+	}
 
-	return std.Run(m, images...)
+	// Apply options if provided
+	for _, opt := range opts {
+		opt(conf)
+	}
+
+	std = newManager(conf)
+	return std.Run(m)
+}
+
+func requiredImageRefs() []string {
+	images := make([]string, 0, len(requiredImages))
+	for _, i := range requiredImages {
+		images = append(images, i())
+	}
+	return images
 }
 
 // Box creates a new container using the provided image and passes

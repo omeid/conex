@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.0.4] - Unreleased
+
+### Features
+- **`OptRequireImage(string)`**: Add an image to the list of images to pull/build at runtime.
+- **Positive options API**: All configuration options use positive semantics (`OptPullImages`, `OptBuildImages`, `OptGoImage`, `OptReturnCode`, `OptRequireImage`).
+
+### Breaking Changes
+- **`Run()` signature changed**: Now accepts `Option` values after `m` instead of image `string` values. To pass images, use `conex.OptRequireImage("image")`.
+
+### Changed
+- **`New()` signature changed**: Now accepts variadic `Option` values.
+- Image setup now de-duplicates refs across package-level requirements and runtime options.
+- When `BuildImages` is disabled, Dockerfile images are validated via their built tags.
+- Tart runner now returns a clear setup error when Dockerfile refs are passed as VM images.
+
+### Fixed
+- Port wait dialing now uses `net.JoinHostPort`, fixing IPv6-safe address handling.
+
+### Documentation
+- Refreshed README examples and wording for the options API and runner behavior.
+
 ## [v0.0.3] - 2026-03-29
 
 ### Added

@@ -1,62 +1,45 @@
-# Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex)  [![Build Status](https://travis-ci.org/omeid/conex.svg?branch=master)](https://travis-ci.org/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
-Conex integrates [Go](https://golang.org) `testing` with [Docker](https://docker.com)  and [Tart](https://github.com/cirruslabs/tart) so you can easily run your integration tests and benchmarks.
+# Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex) [![Build Status](https://travis-ci.org/omeid/conex.svg?branch=master)](https://travis-ci.org/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
 
-> Yes, we did hear you like integrations.
+Conex integrates Go `testing` with Docker (and Tart, experimentally) so integration tests can start real dependencies with less boilerplate.
 
 ## Why?
 
-Integration tests are very good value, they're easy to write and help you catch bugs in a more realistic environment and with most every service and database avaliable as a Docker Container, docker is a great option to run your service dependencies in a clear state. Conex is here to make it simpler by taking care of the following tasks:
+Integration tests are high-value when they run against real services. Conex handles common setup work so tests stay focused on behavior:
 
-- starting containers
-- automatically creating uniqe names to avoid conflicts
-- deleting containers
-- pull or check images before running tests
-- Wait for a service (tcp, udp) port to accept connections
+- Start and stop containers
+- Create unique names to avoid collisions
+- Pull images (or build from Dockerfiles) before tests run
+- Wait for TCP/UDP ports to accept connections
 - Expose ports
 
-On top of that, Conex providers a driver convention to simplify code reuse across projects.
+It also supports a driver convention so reusable test helpers can register their required images.
 
+## Quick Start
 
-## How?
+Use `conex.Run(m)` in `TestMain`:
 
-To use conex, we will leverage `TestMain`, this will allow us a starting point to connect to docker, pull all the dependent images and only then run the tests.
-
-Simpley call `conex.Run(m)` where you would run `m.Run()`.
 ```go
 func TestMain(m *testing.M) {
-  // If you're planing to use conex.Box directly without
-  // using a driver, you can pass your required images
-  // after m to conex.Run.
   os.Exit(conex.Run(m))
 }
 ```
 
-In our tests, we will use `driver` packages, these packages register their required image with conex and provide you with a native client and take cares of requesting a container from conex.
-
-Here is an example using redis:
+Or pass options for per-suite behavior:
 
 ```go
-func testPing(t *testing.T) {
-  redisDb: = 0
-  client, container := redis.Box(t, redisDb)
-  defer container.Drop() // Return the container.
-
-  // here we can simply use client which is a go-redis
-  // client.
+func TestMain(m *testing.M) {
+  os.Exit(conex.Run(
+    m,
+    conex.OptPullImages(true),
+    conex.OptBuildImages(true),
+    conex.OptRequireImage("gcr.io/distroless/cc-debian10"),
+  ))
 }
 ```
 
-
-## Boxes
-
-You can find find drivers/box packages for redis, mysql, postgresql, rethinkdb, and many more on [github.com/conex](https://github.com/conex).
-
+Options take precedence over package-level variables.
 
 ## Example
-Here is a complete example using a simple Echo service.
-
-You can create many containers and different services as you want, you can also run multiple tests in parallel without conflict, conex
-creates the containers with uniqe names that consist of the test id, package path, test name, container, and an ordinal index starting from 0. This avoids container name conflicts across the board.
 
 ```go
 package example_test
@@ -66,8 +49,7 @@ import (
   "testing"
 
   "github.com/omeid/conex"
-  "github.com/omeid/conex/echo"
-  echolib "github.com/omeid/echo"
+  "github.com/conex/echo"
 )
 
 func TestMain(m *testing.M) {
@@ -75,229 +57,91 @@ func TestMain(m *testing.M) {
 }
 
 func TestEcho(t *testing.T) {
-  reverse := true
+  e, container := echo.Box(t)
+  defer container.Drop()
 
-  e, container := echo.Box(t, reverse)
-  defer container.Drop() // Return the container.
-
-  say := "hello"
-  expect := say
-  if reverse {
-    expect = echolib.Reverse(say)
-  }
-
-  reply, err := e.Say(say)
-
-  if err != nil {
-    t.Fatal(err)
-  }
-
-  if reply != expect {
-    t.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
-  }
-
+  _ = e
+  // use e to interact with the echo service
 }
-
-// You can also use containers in benchmarks!
-func BenchmarkEcho(b *testing.B) {
-
-	reverse := false
-	say := "hello"
-	expect := say
-
-	e, c := echo.Box(b, reverse)
-	defer c.Drop()
-
-	for n := 0; n < b.N; n++ {
-
-		reply, err := e.Say(say)
-
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		if reply != expect {
-			b.Fatalf("\nSaid: %s\nExpected: %s\nGot:      %s\n", say, expect, reply)
-		}
-	}
-}
-
 ```
 
-And running tests will yield:
+## Advanced Container Options
 
-```sh
-$ go test -v
-2017/04/17 22:13:05 
-=== conex: Pulling Images
---- Pulling omeid/echo:http (1 of 1)
-http: Pulling from omeid/echo
-627beaf3eaaf: Already exists 
-8800e3417eb1: Already exists 
-b6acb96fee14: Already exists 
-66be5afddf19: Already exists 
-8ca17cdcfc93: Already exists 
-792cf0844f5e: Already exists 
-26601152322c: Pull complete 
-2cb3c6a6d3ee: Pull complete 
-Digest: sha256:f6968275ab031d91a3c37e8a9f65b961b5a3df850a90fe4551ecb4724ab3b0a7
-Status: Downloaded newer image for omeid/echo:http
-=== conex: Pulling Done
-2017/04/17 22:13:38 
-2017/04/17 22:13:38 
-=== conex: Starting your tests.
-=== RUN   TestEcho
---- PASS: TestEcho (0.55s)
-      conex.go:11: creating (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
-      conex.go:11: started (omeid/echo:http: -reverse) as conex_508151185_test-TestEcho-omeid_echo.http_0
-PASS
-ok    test  33.753s
-```
-
-### Advanced Container Options
-
-The `Config` struct supports Docker-specific options for containers that need elevated access:
+`Config` supports Docker-specific container options:
 
 ```go
 c := conex.Box(t, &conex.Config{
   Image:      "docker:dind",
-  Privileged: true,                              // run in privileged mode (e.g. for Docker-in-Docker)
-  Binds:      []string{"/var/run/docker.sock:/var/run/docker.sock"}, // volume mounts
-  Env:        []string{"DOCKER_TLS_CERTDIR="},
+  Privileged: true,
+  Binds:      []string{"/var/run/docker.sock:/var/run/docker.sock"},
 })
 ```
 
-`Privileged` and `Binds` are Docker runner options. The Tart runner ignores them -- VMs are full OS instances that don't need these concepts.
+`Privileged` and `Binds` are Docker runner options only.
 
-## Drivers Packages
+## Driver Packages
 
-Conex drivers are simple packages that follow a convention to provide a simple interface to the underlying service run on the container.
-So the user doesn't have to think about containers but the service in their tests.
+Conex drivers are small packages that wrap a service container with a native client API. This lets tests focus on the service instead of raw container lifecycle details.
 
-### Using Registry Images
+A driver usually:
 
-First, define an image attribute for your package that users can change and register it with conex.
+1. Defines an `Image` variable
+2. Registers it with `conex.Require(...)`
+3. Exposes a helper that returns both a client and a `conex.Container`
 
-```go
-// Image to use for the box.
-var Image = "redis:alpine"
+See the [echo box source](https://github.com/conex/echo/blob/master/echo.go) for a concrete example.
 
-func init() {
-  conex.Require(func() string { return Image })
-}
-```
+## Image References
 
-### Using Dockerfiles
+An image can be either:
 
-Instead of pulling a pre-built image, you can build one from a Dockerfile. Use a path that starts with `Dockerfile` as the image name:
+- A registry reference: `name[:tag|@digest]`
+- A Dockerfile path: `Dockerfile` or `Dockerfile.suffix`
 
-```go
-var Image = "Dockerfile.myservice"
+Before tests run, Conex either pulls/builds these images or validates they already exist, based on configuration.
 
-func init() {
-  conex.Require(func() string { return Image })
-}
-```
+## Runners
 
-Conex detects Dockerfile paths automatically. The Dockerfile is built before tests run, and the resulting image is tagged `conex-build:<name>`. Suffixes are supported: `Dockerfile.ssh`, `Dockerfile.testing`, etc. The Dockerfile path is relative to the test's working directory.
+Conex auto-detects the runner:
 
-This is useful when you need a custom test image that isn't available on a registry, or when the image setup requires steps that are too slow to run at container startup (like installing packages).
+- **Linux + local Docker socket**: native runner (direct container IP)
+- **macOS/Windows/remote Docker**: docker runner (tests run in a container)
 
-Then request a container with the required image from conex and setup a client
-that is connected to the container you created.
-Return the client and the container.
+### Native Runner
 
-```go
-// Box returns an connect to an echo container based on
-// your provided tags.
-func Box(t testing.TB, optionally SomeOptions) (your.Client, conex.Container)) {
+Runs tests on the host and connects directly to container IPs.
 
-  conf := &conex.Config{
-    Image: Image,
-    // Here you may set other options based
-    // on the options passed to Box.
-  }
+### Docker Runner
 
-  c, con := conex.Box(t, conf)
+Runs tests inside a container on a shared `conex` network. This avoids host-network limitations on Docker Desktop and remote Docker hosts.
 
-  opt := &your.Options{
-    Addr: c.Address(),
-    magic: optionally.SomeMagic,
-  }
+When using the docker runner, Conex:
 
-  client, err := redis.NewClient(opt)
+1. Creates a `conex` network
+2. Runs the test binary in a Go container on that network
+3. Starts service containers on the same network
+4. Lets containers communicate via container names
 
-  if err != nil {
-    t.Fatal(err)
-  }
-
-  return client, con
-}
-
-```
-### Runners
-
-Conex automatically detects the appropriate runner based on your environment:
-
-- **Linux with local Docker socket**: Uses the native runner (direct container IP access)
-- **macOS, Windows, or remote Docker**: Uses the docker runner (runs tests inside a container)
-
-#### Native Runner
-
-The native runner connects to containers using their direct IP addresses. This is automatically selected on Linux with a local Docker socket.
-
-#### Docker Runner
-
-The docker runner automatically runs your tests inside a Docker container on a shared `conex` network. This is automatically selected on macOS, Windows, or when using a remote Docker host, since container IPs are not directly accessible in these environments.
-
-When using the docker runner, conex will:
-1. Create a `conex` Docker network
-2. Run your test binary inside a Go container on that network
-3. All service containers are also created on the same network
-4. Containers can communicate using their names as hostnames
-
-You can customize the Go image used for running tests:
+Customize the Go image used by the docker runner:
 
 ```go
 func TestMain(m *testing.M) {
-  // Use a specific Go version
   conex.GoImage = "golang:1.21-alpine"
   os.Exit(conex.Run(m))
 }
 ```
 
-#### Tart Runner (Experimental)
+### Tart Runner (Experimental)
 
-The tart runner creates macOS and Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs. VMs are cloned from base images, started, and deleted automatically just like Docker containers.
+The Tart runner creates macOS/Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs.
 
 ```bash
 CONEX_RUNNER=tart go test ./...
 ```
 
-Both macOS and Linux images are supported:
+Tart image references should be Tart VM images (for example, `ghcr.io/cirruslabs/macos-sequoia-base:latest`). Dockerfile image refs are not supported with the Tart runner.
 
-Support for running Tart VMs on remote machines via SSH is coming soon.
-
-```go
-var image = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
-
-func init() {
-  conex.Require(func() string { return image })
-}
-
-func TestInVM(t *testing.T) {
-  c := conex.Box(t, &conex.Config{
-    Image: image,
-  })
-  defer c.Drop()
-
-  t.Logf("VM running at %s", c.Address())
-}
-```
-
-#### Overriding Auto-Detection
-
-You can override the auto-detected runner using the `CONEX_RUNNER` environment variable:
+### Overriding Auto-Detection
 
 ```bash
 # Force native runner
@@ -307,8 +151,31 @@ CONEX_RUNNER=native go test ./...
 CONEX_RUNNER=docker go test ./...
 ```
 
-### Is it good?
-Yes.
+## Configuration
 
-### LICENSE
-  [MIT](LICENSE).
+Package-level defaults:
+
+```go
+conex.PullImages = true
+conex.BuildImages = true
+conex.FailReturnCode = 255
+conex.GoImage = "golang:1.22"
+```
+
+Or override per run:
+
+```go
+func TestMain(m *testing.M) {
+  os.Exit(conex.Run(
+    m,
+    conex.OptPullImages(true),
+    conex.OptBuildImages(true),
+    conex.OptGoImage("golang:1.22"),
+    conex.OptReturnCode(255),
+  ))
+}
+```
+
+## License
+
+[MIT](LICENSE)

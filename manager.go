@@ -28,63 +28,105 @@ const (
 	RunnerDocker RunnerType = "docker"
 )
 
-// New returns a new conex manager.
-func New(retcode int, pullImages bool, images ...string) Manager {
-	return newManager(retcode, pullImages, RunnerNative, "", images...)
+type managerConfig struct {
+	name        string
+	runner      RunnerType
+	retcode     int
+	pullImages  bool
+	buildImages bool
+	goImage     string
+	images      []string
+}
+
+type Option func(conf *managerConfig)
+
+func OptReturnCode(code int) Option {
+	return func(conf *managerConfig) { conf.retcode = code }
+}
+
+func OptPullImages(pull bool) Option {
+	return func(conf *managerConfig) { conf.pullImages = pull }
+}
+
+func OptBuildImages(build bool) Option {
+	return func(conf *managerConfig) { conf.buildImages = build }
+}
+
+func OptGoImage(image string) Option {
+	return func(conf *managerConfig) { conf.goImage = image }
+}
+
+func OptRequireImage(image string) Option {
+	return func(conf *managerConfig) { conf.images = append(conf.images, image) }
+}
+
+// New creates a new conex manager with the given options.
+// Options take precedence over package-level defaults.
+func New(options ...Option) Manager {
+	conf := &managerConfig{
+		runner:      RunnerNative,
+		pullImages:  PullImages,
+		buildImages: BuildImages,
+		retcode:     FailReturnCode,
+		goImage:     GoImage,
+	}
+
+	for _, opt := range options {
+		opt(conf)
+	}
+
+	return newManager(conf)
 }
 
 // newManager is the internal constructor that accepts all options.
-func newManager(retcode int, pullImages bool, runnerType RunnerType, goImage string, images ...string) Manager {
+func newManager(conf *managerConfig) Manager {
 	return &manager{
-		retcode:    retcode,
-		pullImages: pullImages,
-		images:     images,
-		counter:    &counter{seqs: make(map[string]int)},
-		runnerType: runnerType,
-		goImage:    goImage,
+		conf:    conf,
+		counter: &counter{seqs: make(map[string]int)},
 	}
 }
 
 type manager struct {
-	retcode    int
-	pullImages bool
-
-	name       string
-	images     []string
-	client     *docker.Client
-	counter    *counter
-	runnerType RunnerType
-	runner     Runner
-	goImage    string
+	conf    *managerConfig
+	client  *docker.Client
+	counter *counter
+	runner  Runner
 }
 
 // Run prepares a docker client, pulls the provided list of images
 // and then runs your tests.
 func (mn *manager) Run(m *testing.M, images ...string) int {
 	var err error
-	mn.name, err = testContainersPrefix()
+	mn.conf.name, err = testContainersPrefix()
 
 	if err != nil {
-		return mn.retcode
+		return mn.conf.retcode
 	}
 
-	mn.images = append(mn.images, images...)
+	allImages := dedupeImages(append(append([]string{}, mn.conf.images...), images...))
+	mn.conf.images = allImages
 
 	// Tart runner doesn't need a Docker client.
-	if mn.runnerType == RunnerTart {
+	if mn.conf.runner == RunnerTart {
+		pullImages, buildImages := splitImageRefs(allImages)
+		if len(buildImages) > 0 {
+			fmt.Printf("conex: tart runner does not support Dockerfile image refs: %s\n", strings.Join(buildImages, ", "))
+			return mn.conf.retcode
+		}
+
 		runnerConfig := &RunnerConfig{
-			Name:    mn.name,
+			Name:    mn.conf.name,
 			Counter: mn.counter,
 		}
 		mn.runner = NewTartRunner(runnerConfig)
 
-		if mn.pullImages {
-			err = mn.tartPull(images)
+		if mn.conf.pullImages {
+			err = mn.tartPull(pullImages)
 		}
 
 		if err != nil {
 			fmt.Println(err)
-			return mn.retcode
+			return mn.conf.retcode
 		}
 
 		log.Println()
@@ -103,7 +145,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	mn.client, err = docker.NewClientFromEnv()
 	if err != nil {
 		fmt.Println(err)
-		return mn.retcode
+		return mn.conf.retcode
 	}
 
 	// Ping the Docker server to initialize the client's API version.
@@ -111,41 +153,57 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	// goroutines call methods that trigger checkAPIVersion() concurrently.
 	if err := mn.client.Ping(); err != nil {
 		fmt.Println("Failed to ping Docker:", err)
-		return mn.retcode
+		return mn.conf.retcode
 	}
 
 	// Create the runner configuration
 	runnerConfig := &RunnerConfig{
 		Client:     mn.client,
-		Name:       mn.name,
-		PullImages: mn.pullImages,
-		Images:     mn.images,
-		RetCode:    mn.retcode,
+		Name:       mn.conf.name,
+		PullImages: mn.conf.pullImages,
+		Images:     allImages,
+		RetCode:    mn.conf.retcode,
 		Counter:    mn.counter,
-		GoImage:    mn.goImage,
+		GoImage:    mn.conf.goImage,
 	}
 
 	// Create the appropriate runner
-	switch mn.runnerType {
+	switch mn.conf.runner {
 	case RunnerDocker:
 		mn.runner = NewDockerRunner(runnerConfig)
-		// Add Go image to the list of images to pull for docker runner
-		if mn.goImage != "" {
-			images = append(images, mn.goImage)
-		}
 	default:
 		mn.runner = NewNativeRunner(runnerConfig)
 	}
 
-	if mn.pullImages {
-		err = mn.pull(images)
+	prepareImages := append([]string{}, allImages...)
+	if mn.conf.runner == RunnerDocker && mn.conf.goImage != "" {
+		prepareImages = append(prepareImages, mn.conf.goImage)
+	}
+
+	var pullImages []string
+	var buildImages []string
+
+	pullImages, buildImages = splitImageRefs(prepareImages)
+
+	if mn.conf.pullImages {
+		err = mn.pull(pullImages)
 	} else {
-		err = mn.ensure(images)
+		err = mn.ensure(pullImages)
+	}
+	if err != nil {
+		fmt.Println(err)
+		return mn.conf.retcode
+	}
+
+	if mn.conf.buildImages {
+		err = mn.build(buildImages)
+	} else {
+		err = mn.ensure(dockerfileTags(buildImages))
 	}
 
 	if err != nil {
 		fmt.Println(err)
-		return mn.retcode
+		return mn.conf.retcode
 	}
 
 	log.Println() // print a timestamp. Helps to see how long tests take on it's own.
@@ -165,7 +223,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 func (mn *manager) boxName(test string, image string) string {
 	image = strings.ReplaceAll(image, ":", ".")
 	image = strings.ReplaceAll(image, "/", "_")
-	name := fmt.Sprintf("%s-%s-%s", mn.name, test, image)
+	name := fmt.Sprintf("%s-%s-%s", mn.conf.name, test, image)
 	name = fmt.Sprintf("%s_%d", name, mn.counter.Count(name))
 
 	return name
@@ -189,76 +247,67 @@ func (mn *manager) pull(images []string) error {
 		return nil
 	}
 
-	var pullImages []string
-	var buildImages []string
+	log.Println()
+	fmt.Fprintf(os.Stderr, "=== conex: Pulling Images\n")
 
-	for _, image := range images {
-		if isDockerfile(image) {
-			buildImages = append(buildImages, image)
-		} else {
-			pullImages = append(pullImages, image)
-		}
-	}
+	l := len(images)
+	for i, image := range images {
+		fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", image, i+1, l)
 
-	if len(pullImages) > 0 {
-		log.Println()
-		fmt.Fprintf(os.Stderr, "=== conex: Pulling Images\n")
-
-		l := len(pullImages)
-		for i, image := range pullImages {
-			fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", image, i+1, l)
-
-			repo, tag := docker.ParseRepositoryTag(image)
-			if tag == "" {
-				tag = "latest"
-			}
-
-			err := mn.client.PullImage(
-				docker.PullImageOptions{
-					Repository:   repo,
-					Tag:          tag,
-					OutputStream: os.Stderr,
-				},
-				docker.AuthConfiguration{},
-			)
-
-			if err != nil {
-				return err
-			}
+		repo, tag := docker.ParseRepositoryTag(image)
+		if tag == "" {
+			tag = "latest"
 		}
 
-		fmt.Fprintf(os.Stderr, "=== conex: Pulling Done\n")
-		log.Println()
-	}
-
-	if len(buildImages) > 0 {
-		log.Println()
-		fmt.Fprintf(os.Stderr, "=== conex: Building Images\n")
-
-		for i, image := range buildImages {
-			tag := dockerfileTag(image)
-			fmt.Fprintf(os.Stderr, "--- Building %s as %s (%d of %d)\n", image, tag, i+1, len(buildImages))
-
-			dir := filepath.Dir(image)
-			dockerfileName := filepath.Base(image)
-
-			err := mn.client.BuildImage(docker.BuildImageOptions{
-				Name:         tag,
-				Dockerfile:   dockerfileName,
-				ContextDir:   dir,
+		err := mn.client.PullImage(
+			docker.PullImageOptions{
+				Repository:   repo,
+				Tag:          tag,
 				OutputStream: os.Stderr,
-			})
+			},
+			docker.AuthConfiguration{},
+		)
 
-			if err != nil {
-				return fmt.Errorf("build %s: %w", image, err)
-			}
+		if err != nil {
+			return err
 		}
-
-		fmt.Fprintf(os.Stderr, "=== conex: Building Done\n")
-		log.Println()
 	}
 
+	fmt.Fprintf(os.Stderr, "=== conex: Pulling Done\n")
+	log.Println()
 	return nil
+}
+
+func (mn *manager) build(images []string) error {
+	if len(images) == 0 {
+		return nil
+	}
+	log.Println()
+	fmt.Fprintf(os.Stderr, "=== conex: Building Images\n")
+
+	for i, image := range images {
+		tag := dockerfileTag(image)
+		fmt.Fprintf(os.Stderr, "--- Building %s as %s (%d of %d)\n", image, tag, i+1, len(images))
+
+		dir := filepath.Dir(image)
+		dockerfileName := filepath.Base(image)
+
+		err := mn.client.BuildImage(docker.BuildImageOptions{
+			Name:         tag,
+			Dockerfile:   dockerfileName,
+			ContextDir:   dir,
+			OutputStream: os.Stderr,
+		})
+
+		if err != nil {
+			return fmt.Errorf("build %s: %w", image, err)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "=== conex: Building Done\n")
+	log.Println()
+	return nil
+
 }
 
 // isDockerfile returns true if the image string looks like a path to a
@@ -275,6 +324,41 @@ func dockerfileTag(path string) string {
 	base = strings.ToLower(base)
 	base = strings.ReplaceAll(base, ".", "-")
 	return "conex-build:" + base
+}
+
+func splitImageRefs(images []string) (pullImages []string, buildImages []string) {
+	for _, image := range images {
+		if isDockerfile(image) {
+			buildImages = append(buildImages, image)
+		} else {
+			pullImages = append(pullImages, image)
+		}
+	}
+	return pullImages, buildImages
+}
+
+func dockerfileTags(images []string) []string {
+	tags := make([]string, 0, len(images))
+	for _, image := range images {
+		tags = append(tags, dockerfileTag(image))
+	}
+	return tags
+}
+
+func dedupeImages(images []string) []string {
+	seen := make(map[string]struct{}, len(images))
+	uniq := make([]string, 0, len(images))
+	for _, image := range images {
+		if image == "" {
+			continue
+		}
+		if _, ok := seen[image]; ok {
+			continue
+		}
+		seen[image] = struct{}{}
+		uniq = append(uniq, image)
+	}
+	return uniq
 }
 
 func (mn *manager) ensure(images []string) error {

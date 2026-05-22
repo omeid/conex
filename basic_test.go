@@ -12,12 +12,11 @@ import (
 
 const basicImage = "alpine"
 
-func init() {
-	// conex.PullImages = false
-}
-
 func TestMain(m *testing.M) {
-	os.Exit(conex.Run(m, basicImage))
+	os.Exit(conex.Run(
+		m,
+		conex.OptRequireImage(basicImage),
+	))
 }
 
 func TestBasicMulti(t *testing.T) {

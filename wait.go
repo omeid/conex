@@ -2,7 +2,6 @@ package conex
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"time"
 
@@ -22,7 +21,7 @@ func wait(host string, port string, maxWait time.Duration) error {
 
 	defer tick.Stop()
 
-	addr := fmt.Sprintf("%s:%s", host, portset.Port())
+	addr := net.JoinHostPort(host, portset.Port())
 	for {
 
 		select {
