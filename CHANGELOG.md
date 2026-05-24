@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.0.4] - Unreleased
+## [v0.0.4] - 2026-05-25 
 
 ### Features
 - **`OptRequireImage(string)`**: Add an image to the list of images to pull/build at runtime.

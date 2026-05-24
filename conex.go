@@ -9,12 +9,12 @@ import (
 // We keep logger here because the filename is shown along with the logs,
 // this means that conex.go is put right before each log in tests which
 // makes the source of the log more clear to the user.
-func logf(t testing.TB, f string, args ...interface{}) {
+func logf(t testing.TB, f string, args ...any) {
 	t.Logf(f, args...)
 }
 
 // Same story as above.
-func fatalf(t testing.TB, f string, args ...interface{}) {
+func fatalf(t testing.TB, f string, args ...any) {
 	t.Fatalf(f, args...)
 }
 
