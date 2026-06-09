@@ -60,6 +60,11 @@ func OptRequireImage(image string) Option {
 	return func(conf *managerConfig) { conf.images = append(conf.images, image) }
 }
 
+// OptRunnerType allows setting the RunnerType explicitly.
+func OptRunnerType(runner RunnerType) Option {
+	return func(conf *managerConfig) { conf.runner = runner }
+}
+
 // New creates a new conex manager with the given options.
 // Options take precedence over package-level defaults.
 func New(options ...Option) Manager {

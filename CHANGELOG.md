@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.5] - 2026-06-09
+
+### Added
+- **`OptRunnerType(RunnerType)`**: Added a new option to explicitly set the runner type (e.g., `RunnerNative`, `RunnerDocker`, `RunnerTart`), overriding the auto-detection.
+
 ## [v0.0.4] - 2026-05-25 
 
 ### Features
