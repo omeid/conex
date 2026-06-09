@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 }
 ```
 
-Or pass options for per-suite behavior:
+Or pass options for per run or per package behavior:
 
 ```go
 func TestMain(m *testing.M) {
@@ -49,19 +49,19 @@ import (
   "testing"
 
   "github.com/omeid/conex"
-  "github.com/conex/echo"
+  "github.com/conex/postgresql"
 )
 
 func TestMain(m *testing.M) {
   os.Exit(conex.Run(m))
 }
 
-func TestEcho(t *testing.T) {
-  e, container := echo.Box(t)
+func TestPostgreSQL(t *testing.T) {
+  db, container := postgresql.Box(t)
   defer container.Drop()
 
-  _ = e
-  // use e to interact with the echo service
+  _ = db
+  // use db to interact with the postgresql database
 }
 ```
 
