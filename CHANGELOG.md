@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.6] - 2026-06-10
+
+### Added
+- **`Container.Exec`**: Added an `Exec` method to the `Container` interface that mimics the `os/exec` package. This allows you to execute commands directly inside containers across all runners and correctly handle `Stdin`, `Stdout`, and `Stderr` streams natively.
+
 ## [v0.0.5] - 2026-06-09
 
 ### Added

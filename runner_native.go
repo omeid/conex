@@ -153,3 +153,7 @@ func (c *nativeContainer) Drop() {
 func (c *nativeContainer) Wait(port string, timeout time.Duration) error {
 	return wait(c.Address(), port, timeout)
 }
+
+func (c *nativeContainer) Exec(cmd ...string) *Cmd {
+	return newDockerCmd(c.client, c.json.ID, cmd)
+}

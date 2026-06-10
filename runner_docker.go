@@ -345,6 +345,10 @@ func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
 	return wait(c.Address(), port, timeout)
 }
 
+func (c *dockerContainer) Exec(cmd ...string) *Cmd {
+	return newDockerCmd(c.client, c.json.ID, cmd)
+}
+
 // Logs returns the container logs as a ReadCloser.
 func (c *dockerContainer) Logs() (io.ReadCloser, error) {
 	var buf bytes.Buffer
@@ -361,4 +365,62 @@ func (c *dockerContainer) Logs() (io.ReadCloser, error) {
 	}
 
 	return io.NopCloser(&buf), nil
+}
+
+func newDockerCmd(client *docker.Client, containerID string, cmd []string) *Cmd {
+	if len(cmd) == 0 {
+		return nil
+	}
+
+	c := &Cmd{
+		Path: cmd[0],
+		Args: cmd,
+	}
+
+	var execID string
+	errCh := make(chan error, 1)
+
+	c.start = func() error {
+		opts := docker.CreateExecOptions{
+			Container:    containerID,
+			Cmd:          c.Args,
+			Env:          c.Env,
+			WorkingDir:   c.Dir,
+			AttachStdin:  c.Stdin != nil,
+			AttachStdout: true,
+			AttachStderr: true,
+		}
+
+		execInfo, err := client.CreateExec(opts)
+		if err != nil {
+			return err
+		}
+		execID = execInfo.ID
+
+		go func() {
+			errCh <- client.StartExec(execID, docker.StartExecOptions{
+				InputStream:  c.Stdin,
+				OutputStream: c.Stdout,
+				ErrorStream:  c.Stderr,
+			})
+		}()
+		return nil
+	}
+
+	c.wait = func() error {
+		err := <-errCh
+		if err != nil {
+			return err
+		}
+		execInspect, err := client.InspectExec(execID)
+		if err != nil {
+			return err
+		}
+		if execInspect.ExitCode != 0 {
+			return fmt.Errorf("exit status %d", execInspect.ExitCode)
+		}
+		return nil
+	}
+
+	return c
 }

@@ -35,8 +35,9 @@ type Container interface {
 	Drop()
 
 	Wait(port string, timeout time.Duration) error // Wait for the port to respond to tcp/udp.
-	//TODO: Yo.
-	// Ports() []string
+
+	// Exec creates a command to run inside the container.
+	Exec(cmd ...string) *Cmd
 }
 
 // Config contains the configuration data about a container.

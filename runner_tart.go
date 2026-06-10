@@ -3,6 +3,7 @@ package conex
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -171,6 +172,36 @@ func (c *tartContainer) Drop() {
 
 func (c *tartContainer) Wait(port string, timeout time.Duration) error {
 	return wait(c.ip, port, timeout)
+}
+
+func (c *tartContainer) Exec(cmd ...string) *Cmd {
+	if len(cmd) == 0 {
+		return nil
+	}
+
+	cmdObj := &Cmd{
+		Path: cmd[0],
+		Args: cmd,
+	}
+
+	args := append([]string{"exec", c.vmName}, cmd...)
+	osCmd := exec.Command("tart", args...)
+
+	cmdObj.start = func() error {
+		// Pass through current environment plus the configured environment.
+		osCmd.Env = append(os.Environ(), cmdObj.Env...)
+		osCmd.Dir = cmdObj.Dir
+		osCmd.Stdin = cmdObj.Stdin
+		osCmd.Stdout = cmdObj.Stdout
+		osCmd.Stderr = cmdObj.Stderr
+		return osCmd.Start()
+	}
+
+	cmdObj.wait = func() error {
+		return osCmd.Wait()
+	}
+
+	return cmdObj
 }
 
 // tartCmd runs a tart command and returns its combined output.

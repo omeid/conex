@@ -62,6 +62,11 @@ func TestPostgreSQL(t *testing.T) {
 
   _ = db
   // use db to interact with the postgresql database
+
+  // you can also execute commands directly inside the container
+  // using an API that closely matches os/exec:
+  // cmd := container.Exec("psql", "-U", "postgres", "-c", "CREATE DATABASE testdb;")
+  // out, err := cmd.CombinedOutput()
 }
 ```
 
