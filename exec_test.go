@@ -25,22 +25,26 @@ func TestExecCat(t *testing.T) {
 
 	// 1. cat from host to container
 	// We run `sh -c "cat > /tmp/exec_test.txt"` and provide Stdin.
+	var writeErrBuf bytes.Buffer
 	cmdWrite := c.Exec("sh", "-c", "cat > /tmp/exec_test.txt")
 	cmdWrite.Stdin = strings.NewReader(inputData)
+	cmdWrite.Stderr = &writeErrBuf
 
 	err := cmdWrite.Run()
 	if err != nil {
-		t.Fatalf("Failed to write to container using exec: %v", err)
+		t.Fatalf("Failed to write to container using exec: %v, stderr: %q", err, writeErrBuf.String())
 	}
 
 	// 2. cat from container to a host buffer
 	var outBuf bytes.Buffer
+	var errBuf bytes.Buffer
 	cmdRead := c.Exec("cat", "/tmp/exec_test.txt")
 	cmdRead.Stdout = &outBuf
+	cmdRead.Stderr = &errBuf
 
 	err = cmdRead.Run()
 	if err != nil {
-		t.Fatalf("Failed to read from container using exec: %v", err)
+		t.Fatalf("Failed to read from container using exec: %v, stderr: %q", err, errBuf.String())
 	}
 
 	if outBuf.String() != inputData {
