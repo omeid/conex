@@ -16,26 +16,22 @@ It also supports a driver convention so reusable test helpers can register their
 
 ## Quick Start
 
-Use `conex.Main(m)` in `TestMain`:
+To use conex, simply call `conex.Main(m)` from `TestMain`:
 
 ```go
+package example_test
+
+import (
+  "testing"
+
+  "github.com/omeid/conex"
+)
+
 func TestMain(m *testing.M) {
   conex.Main(m)
 }
 ```
 
-Or pass options for per run or per package behavior:
-
-```go
-func TestMain(m *testing.M) {
-  conex.Main(
-    m,
-    conex.OptPullImages(true),
-    conex.OptBuildImages(true),
-    conex.OptRequireImage("gcr.io/distroless/cc-debian10"),
-  )
-}
-```
 
 ## Example
 
@@ -95,17 +91,11 @@ See the [echo box source](https://github.com/conex/echo/blob/master/echo.go) for
 
 Available boxes from `github.com/conex/*`:
 - [Echo](https://github.com/conex/echo)
-- [PostgreSQL](https://github.com/conex/postgresql)
+- [PostgreSQL](https://github.com/conex/postgre)
+- [Mongo](https://github.com/conex/mongodb)
 - [MySQL](https://github.com/conex/mysql)
 - [Redis](https://github.com/conex/redis)
-- [Memcached](https://github.com/conex/memcached)
-- [NATS](https://github.com/conex/nats)
-- [NSQ](https://github.com/conex/nsq)
-- [RethinkDB](https://github.com/conex/rethink)
-- [Cassandra](https://github.com/conex/cassandra)
-- [Mongo](https://github.com/conex/mongo)
-- [Kafka](https://github.com/conex/kafka)
-- [Consul](https://github.com/conex/consul)
+- [RethinkDB](https://github.com/conex/rethinkdb)
 
 ## Image References
 
@@ -118,7 +108,7 @@ Before tests run, Conex either pulls/builds these images or validates they alrea
 
 ## Runners
 
-Conex auto-detects the runner:
+Conex auto-detects the runner unless specified via `conex.OptRunnerType`:
 
 - **Linux + local Docker socket**: native runner (direct container IP)
 - **macOS/Windows/remote Docker**: docker runner (tests run in a container)
