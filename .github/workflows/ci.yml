@@ -12,8 +12,8 @@ jobs:
     strategy:
       matrix:
         go:
-          - "1.21" # Minimum required version (from go.mod)
-          - "1.23" # Latest stable
+          - "1.25" # Minimum required version (from go.mod)
+          - "1.26" # Latest stable
           - "master"
 
     steps:
