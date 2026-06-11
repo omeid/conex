@@ -3,7 +3,6 @@
 package conex_test
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -13,10 +12,10 @@ import (
 const basicImage = "alpine"
 
 func TestMain(m *testing.M) {
-	os.Exit(conex.Run(
+	conex.Main(
 		m,
 		conex.OptRequireImage(basicImage),
-	))
+	)
 }
 
 func TestBasicMulti(t *testing.T) {

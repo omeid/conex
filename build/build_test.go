@@ -17,11 +17,11 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(conex.Run(
+	conex.Main(
 		m,
 		conex.OptRequireImage(buildImage),
 		conex.OptRequireImage(privilegedImage),
-	))
+	)
 }
 
 func TestBuildBox(t *testing.T) {

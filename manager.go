@@ -109,6 +109,15 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	}
 
 	allImages := dedupeImages(append(append([]string{}, mn.conf.images...), images...))
+
+	if os.Getenv(ConexRunnerEnv) == "1" {
+		for i, img := range allImages {
+			if isDockerfile(img) {
+				allImages[i] = dockerfileTag(img)
+			}
+		}
+	}
+
 	mn.conf.images = allImages
 
 	// Tart runner doesn't need a Docker client.
@@ -257,6 +266,10 @@ func (mn *manager) pull(images []string) error {
 
 	l := len(images)
 	for i, image := range images {
+		if strings.HasPrefix(image, "conexbuild/") {
+			continue
+		}
+
 		fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", image, i+1, l)
 
 		repo, tag := docker.ParseRepositoryTag(image)
@@ -323,12 +336,12 @@ func isDockerfile(image string) bool {
 }
 
 // dockerfileTag generates a conex image tag from a Dockerfile path.
-// e.g. "./testdata/Dockerfile.ssh" -> "conex-build:dockerfile-ssh"
+// e.g. "./testdata/Dockerfile.ssh" -> "conexbuild/dockerfile-ssh"
 func dockerfileTag(path string) string {
 	base := filepath.Base(path)
 	base = strings.ToLower(base)
 	base = strings.ReplaceAll(base, ".", "-")
-	return "conex-build:" + base
+	return "conexbuild/" + base
 }
 
 func splitImageRefs(images []string) (pullImages []string, buildImages []string) {

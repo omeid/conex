@@ -22,7 +22,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	os.Exit(conex.Run(m))
+	conex.Main(m)
 }
 
 // --- macOS VM tests ---

@@ -16,11 +16,11 @@ It also supports a driver convention so reusable test helpers can register their
 
 ## Quick Start
 
-Use `conex.Run(m)` in `TestMain`:
+Use `conex.Main(m)` in `TestMain`:
 
 ```go
 func TestMain(m *testing.M) {
-  os.Exit(conex.Run(m))
+  conex.Main(m)
 }
 ```
 
@@ -28,16 +28,14 @@ Or pass options for per run or per package behavior:
 
 ```go
 func TestMain(m *testing.M) {
-  os.Exit(conex.Run(
+  conex.Main(
     m,
     conex.OptPullImages(true),
     conex.OptBuildImages(true),
     conex.OptRequireImage("gcr.io/distroless/cc-debian10"),
-  ))
+  )
 }
 ```
-
-Options take precedence over package-level variables.
 
 ## Example
 
@@ -45,7 +43,6 @@ Options take precedence over package-level variables.
 package example_test
 
 import (
-  "os"
   "testing"
 
   "github.com/omeid/conex"
@@ -53,7 +50,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-  os.Exit(conex.Run(m))
+  conex.Main(m)
 }
 
 func TestPostgreSQL(t *testing.T) {
@@ -96,6 +93,20 @@ A driver usually:
 
 See the [echo box source](https://github.com/conex/echo/blob/master/echo.go) for a concrete example.
 
+Available boxes from `github.com/conex/*`:
+- [Echo](https://github.com/conex/echo)
+- [PostgreSQL](https://github.com/conex/postgresql)
+- [MySQL](https://github.com/conex/mysql)
+- [Redis](https://github.com/conex/redis)
+- [Memcached](https://github.com/conex/memcached)
+- [NATS](https://github.com/conex/nats)
+- [NSQ](https://github.com/conex/nsq)
+- [RethinkDB](https://github.com/conex/rethink)
+- [Cassandra](https://github.com/conex/cassandra)
+- [Mongo](https://github.com/conex/mongo)
+- [Kafka](https://github.com/conex/kafka)
+- [Consul](https://github.com/conex/consul)
+
 ## Image References
 
 An image can be either:
@@ -103,7 +114,7 @@ An image can be either:
 - A registry reference: `name[:tag|@digest]`
 - A Dockerfile path: `Dockerfile` or `Dockerfile.suffix`
 
-Before tests run, Conex either pulls/builds these images or validates they already exist, based on configuration.
+Before tests run, Conex either pulls/builds these images or validates they already exist, based on configuration (`conex.OptPullImages` and `conex.OptBuildImages`).
 
 ## Runners
 
@@ -131,8 +142,10 @@ Customize the Go image used by the docker runner:
 
 ```go
 func TestMain(m *testing.M) {
-  conex.GoImage = "golang:1.21-alpine"
-  os.Exit(conex.Run(m))
+  conex.Main(
+    m,
+    conex.OptGoImage("golang:1.21-alpine"),
+  )
 }
 ```
 
@@ -148,6 +161,8 @@ Tart image references should be Tart VM images (for example, `ghcr.io/cirruslabs
 
 ### Overriding Auto-Detection
 
+While Conex auto-detects the runner by default, you can explicitly override it using an environment variable:
+
 ```bash
 # Force native runner
 CONEX_RUNNER=native go test ./...
@@ -156,28 +171,30 @@ CONEX_RUNNER=native go test ./...
 CONEX_RUNNER=docker go test ./...
 ```
 
-## Configuration
-
-Package-level defaults:
-
-```go
-conex.PullImages = true
-conex.BuildImages = true
-conex.FailReturnCode = 255
-conex.GoImage = "golang:1.22"
-```
-
-Or override per run:
+Alternatively, you can specify the runner programmatically in your tests using `conex.OptRunnerType`:
 
 ```go
 func TestMain(m *testing.M) {
-  os.Exit(conex.Run(
+  conex.Main(
+    m,
+    conex.OptRunnerType(conex.RunnerDocker), // Explicitly force the Docker runner
+  )
+}
+```
+
+## Configuration
+
+You can configure Conex per run:
+
+```go
+func TestMain(m *testing.M) {
+  conex.Main(
     m,
     conex.OptPullImages(true),
     conex.OptBuildImages(true),
     conex.OptGoImage("golang:1.22"),
     conex.OptReturnCode(255),
-  ))
+  )
 }
 ```
 

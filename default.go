@@ -14,20 +14,28 @@ var (
 	// FailReturnCode is used as status code when conex fails to setup during Run.
 	// This does not override the return value of testing.M.Run, only when conex
 	// fails to even testing.M.Run.
+	//
+	// Deprecated: Use OptReturnCode instead.
 	FailReturnCode = 255
 
 	// PullImages dictates whether the Manager should attempt to pull images
 	// on run or simply ensure they exist.
+	//
+	// Deprecated: Use OptPullImages instead.
 	PullImages = true
 
 	// BuildImages dictates whether the Manager should attempt to build images
 	// on run or simply ensure they exist.
+	//
+	// Deprecated: Use OptBuildImages instead.
 	BuildImages = true
 
 	// GoImage is the Docker image used to run tests inside a container when
 	// using the Docker runner. This should be a Go image that matches your
 	// Go version. Set this before calling Run() if you need a specific version.
 	// Example: "golang:1.21-alpine"
+	//
+	// Deprecated: Use OptGoImage instead.
 	GoImage = "golang:1.22"
 )
 
@@ -91,6 +99,11 @@ func Run(m *testing.M, opts ...Option) int {
 
 	std = newManager(conf)
 	return std.Run(m)
+}
+
+// Main is a helper that wraps Run in os.Exit, intended to be called from TestMain.
+func Main(m *testing.M, opts ...Option) {
+	os.Exit(Run(m, opts...))
 }
 
 func requiredImageRefs() []string {
