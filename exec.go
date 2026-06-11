@@ -42,6 +42,12 @@ func (c *Cmd) Run() error {
 
 // Start starts the specified command but does not wait for it to complete.
 func (c *Cmd) Start() error {
+	if c.Stdout == nil {
+		return errors.New("exec: Stdout must be set to an io.Writer")
+	}
+	if c.Stderr == nil {
+		return errors.New("exec: Stderr must be set to an io.Writer")
+	}
 	if c.start != nil {
 		return c.start()
 	}
@@ -64,6 +70,9 @@ func (c *Cmd) Output() ([]byte, error) {
 	}
 	var b bytes.Buffer
 	c.Stdout = &b
+	if c.Stderr == nil {
+		c.Stderr = io.Discard
+	}
 	err := c.Run()
 	return b.Bytes(), err
 }

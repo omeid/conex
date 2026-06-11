@@ -3,6 +3,7 @@ package conex
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -179,9 +180,20 @@ func (c *tartContainer) Exec(cmd ...string) *Cmd {
 		return nil
 	}
 
+	var outStream io.Writer = os.Stdout
+	if os.Stdout == nil {
+		outStream = io.Discard
+	}
+	var errStream io.Writer = os.Stderr
+	if os.Stderr == nil {
+		errStream = io.Discard
+	}
+
 	cmdObj := &Cmd{
-		Path: cmd[0],
-		Args: cmd,
+		Path:   cmd[0],
+		Args:   cmd,
+		Stdout: outStream,
+		Stderr: errStream,
 	}
 
 	args := append([]string{"exec", c.vmName}, cmd...)
