@@ -91,7 +91,7 @@ See the [echo box source](https://github.com/conex/echo/blob/master/echo.go) for
 
 Available boxes from `github.com/conex/*`:
 - [Echo](https://github.com/conex/echo)
-- [PostgreSQL](https://github.com/conex/postgre)
+- [PostgreSQL](https://github.com/conex/postgres)
 - [Mongo](https://github.com/conex/mongodb)
 - [MySQL](https://github.com/conex/mysql)
 - [Redis](https://github.com/conex/redis)
