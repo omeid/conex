@@ -32,6 +32,9 @@ type Container interface {
 	Image() string
 	Address() string
 
+	// Drop stops and removes the container. It is automatically called
+	// via t.Cleanup, but can be called manually. Calling it multiple
+	// times is a no-op.
 	Drop()
 
 	Wait(port string, timeout time.Duration) error // Wait for the port to respond to tcp/udp.

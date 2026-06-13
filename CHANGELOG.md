@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.8] - 2026-06-13
+
+### Changed
+- **Auto Drop Containers**: `conex` now automatically drops containers via `t.Cleanup()`. Manual calls to `c.Drop()` are now idempotent (safe to call multiple times and no-ops if the container is already dropped), removing the need for `defer c.Drop()` in tests.
+
 ## [v0.0.6] - 2026-06-10
 
 ### Added

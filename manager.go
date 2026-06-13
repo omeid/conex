@@ -253,7 +253,11 @@ func (mn *manager) Box(t testing.TB, conf *Config) Container {
 		resolvedConf = &copy
 	}
 	name := mn.boxName(t.Name(), resolvedConf.Image)
-	return mn.runner.Box(t, resolvedConf, name)
+	c := mn.runner.Box(t, resolvedConf, name)
+	t.Cleanup(func() {
+		c.Drop()
+	})
+	return c
 }
 
 func (mn *manager) pull(images []string) error {

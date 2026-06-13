@@ -51,7 +51,6 @@ func TestMain(m *testing.M) {
 
 func TestPostgreSQL(t *testing.T) {
   db, container := postgresql.Box(t)
-  defer container.Drop()
 
   _ = db
   // use db to interact with the postgresql database

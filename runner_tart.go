@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -136,9 +137,10 @@ type tartContainer struct {
 	vmName string
 	image  string
 	ip     string
-	cmd    *exec.Cmd
-	exited <-chan error
-	t      testing.TB
+	cmd      *exec.Cmd
+	exited   <-chan error
+	t        testing.TB
+	dropOnce sync.Once
 }
 
 func (c *tartContainer) ID() string {
@@ -158,17 +160,19 @@ func (c *tartContainer) Address() string {
 }
 
 func (c *tartContainer) Drop() {
-	// Stop the VM.
-	tartCmd("stop", c.vmName)
-	if c.exited != nil {
-		// Wait for the background goroutine monitoring cmd.Wait() to finish.
-		<-c.exited
-	}
+	c.dropOnce.Do(func() {
+		// Stop the VM.
+		tartCmd("stop", c.vmName)
+		if c.exited != nil {
+			// Wait for the background goroutine monitoring cmd.Wait() to finish.
+			<-c.exited
+		}
 
-	// Delete the VM.
-	if _, err := tartCmd("delete", c.vmName); err != nil {
-		c.t.Log("failed to delete VM:", c.vmName, err)
-	}
+		// Delete the VM.
+		if _, err := tartCmd("delete", c.vmName); err != nil {
+			c.t.Log("failed to delete VM:", c.vmName, err)
+		}
+	})
 }
 
 func (c *tartContainer) Wait(port string, timeout time.Duration) error {

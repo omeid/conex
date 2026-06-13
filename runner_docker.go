@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -297,8 +298,9 @@ type dockerContainer struct {
 	json    *docker.Container
 	client  *docker.Client
 	t       testing.TB
-	name    string
-	address string
+	name     string
+	address  string
+	dropOnce sync.Once
 }
 
 func (c *dockerContainer) ID() string {
@@ -318,27 +320,29 @@ func (c *dockerContainer) Address() string {
 }
 
 func (c *dockerContainer) Drop() {
-	// Try to stop the container, but don't fail if it's already stopped
-	err := c.client.StopContainer(c.json.ID, 10)
-	if err != nil {
-		// Check if the error is because the container is not running
-		// In that case, we can proceed to remove it
-		if !strings.Contains(err.Error(), "is not running") &&
-			!strings.Contains(err.Error(), "Container not running") {
-			c.t.Log("failed to stop container: ", c.json.ID)
+	c.dropOnce.Do(func() {
+		// Try to stop the container, but don't fail if it's already stopped
+		err := c.client.StopContainer(c.json.ID, 10)
+		if err != nil {
+			// Check if the error is because the container is not running
+			// In that case, we can proceed to remove it
+			if !strings.Contains(err.Error(), "is not running") &&
+				!strings.Contains(err.Error(), "Container not running") {
+				c.t.Log("failed to stop container: ", c.json.ID)
+				c.t.Fatal(err)
+			}
+		}
+
+		err = c.client.RemoveContainer(docker.RemoveContainerOptions{
+			ID:            c.json.ID,
+			RemoveVolumes: true,
+			Force:         true,
+			Context:       context.Background(),
+		})
+		if err != nil {
 			c.t.Fatal(err)
 		}
-	}
-
-	err = c.client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:            c.json.ID,
-		RemoveVolumes: true,
-		Force:         true,
-		Context:       context.Background(),
 	})
-	if err != nil {
-		c.t.Fatal(err)
-	}
 }
 
 func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
