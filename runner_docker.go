@@ -1,7 +1,6 @@
 package conex
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/moby/term"
 )
 
 const (
@@ -232,7 +232,7 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 				Hostname:     conf.Hostname,
 				Domainname:   conf.Domainname,
 				User:         conf.User,
-				Tty:          true,
+				Tty:          term.IsTerminal(os.Stdout.Fd()),
 				ExposedPorts: exposedPorts,
 			},
 			HostConfig: &docker.HostConfig{
@@ -346,29 +346,28 @@ func (c *dockerContainer) Drop() {
 }
 
 func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
-	return wait(c.Address(), port, timeout)
+	err := wait(c.Address(), port, timeout)
+	if err != nil && testing.Verbose() {
+		c.t.Logf("=== Container %s Logs ===", c.Name())
+		_ = c.Logs(os.Stdout, os.Stderr)
+		c.t.Log("=========================")
+	}
+	return err
 }
 
 func (c *dockerContainer) Exec(cmd ...string) *Cmd {
 	return newDockerCmd(c.client, c.json.ID, cmd)
 }
 
-// Logs returns the container logs as a ReadCloser.
-func (c *dockerContainer) Logs() (io.ReadCloser, error) {
-	var buf bytes.Buffer
-
-	err := c.client.Logs(docker.LogsOptions{
+// Logs writes the container logs to the provided stdout and stderr writers.
+func (c *dockerContainer) Logs(stdout io.Writer, stderr io.Writer) error {
+	return c.client.Logs(docker.LogsOptions{
 		Container:    c.json.ID,
-		OutputStream: &buf,
-		ErrorStream:  &buf,
-		Stdout:       true,
-		Stderr:       true,
+		OutputStream: stdout,
+		ErrorStream:  stderr,
+		Stdout:       stdout != nil,
+		Stderr:       stderr != nil,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return io.NopCloser(&buf), nil
 }
 
 func newDockerCmd(client *docker.Client, containerID string, cmd []string) *Cmd {

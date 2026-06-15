@@ -2,6 +2,7 @@
 package conex
 
 import (
+	"io"
 	"testing"
 	"time"
 )
@@ -41,6 +42,8 @@ type Container interface {
 
 	// Exec creates a command to run inside the container.
 	Exec(cmd ...string) *Cmd
+
+	Logs(stdout io.Writer, stderr io.Writer) error
 }
 
 // Config contains the configuration data about a container.

@@ -2,12 +2,15 @@ package conex
 
 import (
 	"context"
+	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/moby/term"
 )
 
 func init() {
@@ -58,7 +61,7 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 				Hostname:     conf.Hostname,
 				Domainname:   conf.Domainname,
 				User:         conf.User,
-				Tty:          true,
+				Tty:          term.IsTerminal(os.Stdout.Fd()),
 				ExposedPorts: exposedPorts,
 			},
 			HostConfig: &docker.HostConfig{
@@ -155,7 +158,23 @@ func (c *nativeContainer) Drop() {
 }
 
 func (c *nativeContainer) Wait(port string, timeout time.Duration) error {
-	return wait(c.Address(), port, timeout)
+	err := wait(c.Address(), port, timeout)
+	if err != nil && testing.Verbose() {
+		c.t.Logf("=== Container %s Logs ===", c.Name())
+		_ = c.Logs(os.Stdout, os.Stderr)
+		c.t.Log("=========================")
+	}
+	return err
+}
+
+func (c *nativeContainer) Logs(stdout io.Writer, stderr io.Writer) error {
+	return c.client.Logs(docker.LogsOptions{
+		Container:    c.json.ID,
+		OutputStream: stdout,
+		ErrorStream:  stderr,
+		Stdout:       stdout != nil,
+		Stderr:       stderr != nil,
+	})
 }
 
 func (c *nativeContainer) Exec(cmd ...string) *Cmd {

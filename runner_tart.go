@@ -66,9 +66,10 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 	// Start VM in background, capturing stderr so we can report
 	// failures that happen after the process is spawned (e.g.
 	// locked keychain, permission errors).
-	var stderr bytes.Buffer
+	logs := new(safeBuffer)
 	cmd := exec.Command("tart", "run", "--no-graphics", vmName)
-	cmd.Stderr = &stderr
+	cmd.Stdout = logs
+	cmd.Stderr = logs
 	if err := cmd.Start(); err != nil {
 		tartCmd("delete", vmName)
 		fatalf(t, "Failed to start VM: %s", err)
@@ -85,7 +86,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 	select {
 	case err := <-exited:
 		tartCmd("delete", vmName)
-		fatalf(t, "VM process exited immediately: %v: %s", err, stderr.String())
+		fatalf(t, "VM process exited immediately: %v: %s", err, logs.String())
 	case <-time.After(500 * time.Millisecond):
 		// Process still running, proceed.
 	}
@@ -106,7 +107,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		case <-time.After(5 * time.Second):
 		}
 		tartCmd("delete", vmName)
-		fatalf(t, "VM failed to get IP: %s: %s", err, stderr.String())
+		fatalf(t, "VM failed to get IP: %s: %s", err, logs.String())
 	}
 
 	logf(t, "VM %s has IP %s", vmName, ip)
@@ -118,6 +119,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		cmd:    cmd,
 		exited: exited,
 		t:      t,
+		logs:   logs,
 	}
 
 	// Run startup command if provided.
@@ -134,13 +136,14 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 
 // tartContainer implements Container for Tart VMs.
 type tartContainer struct {
-	vmName string
-	image  string
-	ip     string
+	vmName   string
+	image    string
+	ip       string
 	cmd      *exec.Cmd
 	exited   <-chan error
 	t        testing.TB
 	dropOnce sync.Once
+	logs     *safeBuffer
 }
 
 func (c *tartContainer) ID() string {
@@ -176,7 +179,27 @@ func (c *tartContainer) Drop() {
 }
 
 func (c *tartContainer) Wait(port string, timeout time.Duration) error {
-	return wait(c.ip, port, timeout)
+	err := wait(c.ip, port, timeout)
+	if err != nil && testing.Verbose() {
+		c.t.Logf("=== VM %s Logs ===", c.vmName)
+		_ = c.Logs(os.Stdout, os.Stderr)
+		c.t.Log("=========================")
+	}
+	return err
+}
+
+func (c *tartContainer) Logs(stdout io.Writer, stderr io.Writer) error {
+	b := c.logs.Bytes()
+	if stdout != nil {
+		if _, err := stdout.Write(b); err != nil {
+			return err
+		}
+	} else if stderr != nil {
+		if _, err := stderr.Write(b); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *tartContainer) Exec(cmd ...string) *Cmd {
@@ -267,4 +290,30 @@ func tartIPWait(vmName string, timeout time.Duration, exited <-chan error) (stri
 func sanitizeTartName(name string) string {
 	r := strings.NewReplacer("/", "-", " ", "-", ":", "-")
 	return r.Replace(name)
+}
+
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+func (s *safeBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b := s.buf.Bytes()
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	return cp
 }
