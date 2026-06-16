@@ -2,16 +2,23 @@
 package conex
 
 import (
+	"fmt"
 	"io"
 	"testing"
 	"time"
 )
 
-// We keep logger here because the filename is shown along with the logs,
-// this means that conex.go is put right before each log in tests which
-// makes the source of the log more clear to the user.
-func logf(t testing.TB, f string, args ...any) {
-	t.Logf(f, args...)
+// Logf logs directly to stdout to avoid the test file and line number prefix,
+// providing a cleaner output format. It can be used by plugins to log uniformly.
+func Logf(t testing.TB, plugin string, f string, args ...any) {
+	if len(f) > 0 && f[0] >= 'a' && f[0] <= 'z' {
+		f = string(f[0]-32) + f[1:]
+	}
+	if plugin != "" {
+		fmt.Printf("    conex: "+plugin+": "+f+"\n", args...)
+	} else {
+		fmt.Printf("    conex: "+f+"\n", args...)
+	}
 }
 
 // Same story as above.

@@ -56,7 +56,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 	// Sanitize the name for tart (only alphanumeric, hyphens, underscores, dots)
 	vmName := sanitizeTartName(name)
 
-	logf(t, "creating (%s) as %s", cname, vmName)
+	Logf(t, "", "creating (%s) as %s", cname, vmName)
 
 	// Clone from base image.
 	if _, err := tartCmd("clone", conf.Image, vmName); err != nil {
@@ -95,7 +95,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		// Process still running, proceed.
 	}
 
-	logf(t, "started (%s) as %s", cname, vmName)
+	Logf(t, "", "started (%s) as %s", cname, vmName)
 
 	// Wait for VM to get an IP, aborting early if the process exits.
 	ip, err := tartIPWait(vmName, 120*time.Second, exited)
@@ -116,7 +116,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		fatalf(t, "VM failed to get IP: %s: %s", err, logs.String())
 	}
 
-	logf(t, "VM %s has IP %s", vmName, ip)
+	Logf(t, "", "VM %s has IP %s", vmName, ip)
 
 	c := &tartContainer{
 		vmName: vmName,

@@ -50,7 +50,7 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 		cname = cname + " cmd: " + strings.Join(conf.Cmd, " ")
 	}
 
-	logf(t, "creating (%s) as %s", cname, name)
+	Logf(t, "", "creating (%s) as %s", cname, name)
 
 	exposedPorts := make(network.PortSet)
 	for _, port := range conf.Expose {
@@ -87,7 +87,7 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 		fatalf(t, "Failed to start container: %v", err)
 	}
 
-	logf(t, "started (%s) as %s", cname, name)
+	Logf(t, "", "started (%s) as %s", cname, name)
 
 	cjsonResult, err := r.config.Client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
 	if err != nil {

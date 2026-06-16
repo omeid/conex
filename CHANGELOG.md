@@ -3,7 +3,9 @@
 ## [v0.1.0] - 2026-06-16
 
 ### Added
+- **Exported Logger**: Exported `Logf` to allow plugins to uniformly log test output (e.g. `conex: plugin: message`) without standard test file and line number prefixes.
 - **Test-scoped Contexts**: Switched container and exec operations to use Go 1.24+ `t.Context()` to tie container/command execution context lifetimes to the lifecycle of their parent tests.
+- **Interactive Pull Progress**: Implemented custom interactive, multi-line progress bars (showing status, speed, and size) for docker image pulling on TTYs, with a clean status-transition log fallback for non-terminal/CI environments.
 - **Container Entrypoint Configuration**: Added support for setting custom container entrypoints in the container `Config` struct, ensuring they are propagated correctly to native and docker runners.
 
 ### Changed
