@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/docker/go-connections/nat"
 )
 
 // ErrPortWaitTimedOut is returned when Container.Wait reaches maxWait before the
@@ -14,7 +14,7 @@ var ErrPortWaitTimedOut = errors.New("wait timeout")
 
 func wait(host string, port string, maxWait time.Duration) error {
 
-	portset := docker.Port(port)
+	portset := nat.Port(port)
 
 	timeout := time.After(maxWait)
 	tick := time.NewTicker(time.Second)

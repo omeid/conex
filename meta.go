@@ -23,8 +23,9 @@ import (
 // 	return packageName
 // }
 
-//TODO: Find a way to use runtime et al, if possible; because
-//      this is pretty hacky and may break if go build changes.
+// TODO: Find a way to use runtime et al, if possible; because
+//
+//	this is pretty hacky and may break if go build changes.
 func testContainersPrefix() (string, error) {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
@@ -35,5 +36,5 @@ func testContainersPrefix() (string, error) {
 	dir = strings.TrimSuffix(dir, "/_test")
 	dir = "conex_" + dir
 
-	return strings.Replace(dir, "/", "_", -1), nil
+	return strings.ReplaceAll(dir, "/", "_"), nil
 }

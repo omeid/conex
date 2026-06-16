@@ -1,4 +1,4 @@
-# Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex) [![Build Status](https://travis-ci.org/omeid/conex.svg?branch=master)](https://travis-ci.org/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
+# Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
 
 Conex integrates Go `testing` with Docker (and Tart, experimentally) so integration tests can start real dependencies with less boilerplate.
 
@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 func TestPostgreSQL(t *testing.T) {
   db, container := postgresql.Box(t)
 
-  _ = db
+ _ = db
   // use db to interact with the postgresql database
 
   // you can also execute commands directly inside the container

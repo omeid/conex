@@ -71,7 +71,9 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 	cmd.Stdout = logs
 	cmd.Stderr = logs
 	if err := cmd.Start(); err != nil {
-		tartCmd("delete", vmName)
+		if _, deleteErr := tartCmd("delete", vmName); deleteErr != nil {
+			fatalf(t, "Failed to delete VM after start failure: %s", deleteErr)
+		}
 		fatalf(t, "Failed to start VM: %s", err)
 	}
 
@@ -85,7 +87,9 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 	// locked keychain) before we start the longer IP-wait loop.
 	select {
 	case err := <-exited:
-		tartCmd("delete", vmName)
+		if _, deleteErr := tartCmd("delete", vmName); deleteErr != nil {
+			fatalf(t, "Failed to delete VM after immediate exit: %s", deleteErr)
+		}
 		fatalf(t, "VM process exited immediately: %v: %s", err, logs.String())
 	case <-time.After(500 * time.Millisecond):
 		// Process still running, proceed.
@@ -98,7 +102,7 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 	if err != nil {
 		// If the error is from a timeout (process still running), kill it.
 		// If the process already exited, Kill is harmless.
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		// Wait for the process to finish. The channel may have already
 		// been consumed by tartIPWait (process-exit case), so use a
 		// timeout to avoid blocking forever.
@@ -106,7 +110,9 @@ func (r *TartRunner) Box(t testing.TB, conf *Config, name string) Container {
 		case <-exited:
 		case <-time.After(5 * time.Second):
 		}
-		tartCmd("delete", vmName)
+		if _, deleteErr := tartCmd("delete", vmName); deleteErr != nil {
+			fatalf(t, "Failed to delete VM after IP wait failure: %s", deleteErr)
+		}
 		fatalf(t, "VM failed to get IP: %s: %s", err, logs.String())
 	}
 
@@ -165,7 +171,9 @@ func (c *tartContainer) Address() string {
 func (c *tartContainer) Drop() {
 	c.dropOnce.Do(func() {
 		// Stop the VM.
-		tartCmd("stop", c.vmName)
+		if _, err := tartCmd("stop", c.vmName); err != nil {
+			c.t.Fatalf("Failed to stop VM: %s", err)
+		}
 		if c.exited != nil {
 			// Wait for the background goroutine monitoring cmd.Wait() to finish.
 			<-c.exited
@@ -173,7 +181,7 @@ func (c *tartContainer) Drop() {
 
 		// Delete the VM.
 		if _, err := tartCmd("delete", c.vmName); err != nil {
-			c.t.Log("failed to delete VM:", c.vmName, err)
+			c.t.Fatalf("Failed to delete VM: %s", err)
 		}
 	})
 }

@@ -24,7 +24,7 @@ func TestOptRunnerType(t *testing.T) {
 	} else {
 		t.Fatalf("Expected manager to be of type *manager")
 	}
-	
+
 	// Test setting runner to RunnerTart
 	m3 := New(OptRunnerType(RunnerTart))
 	if mgr, ok := m3.(*manager); ok {

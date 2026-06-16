@@ -50,6 +50,7 @@ type Container interface {
 type Config struct {
 	Image      string   // Name of the image as it was passed by the operator (e.g. could be symbolic)
 	Env        []string // List of environment variable to set in the container
+	Entrypoint []string // Entrypoint to run in the container
 	Cmd        []string // Command to run when starting the container
 	Hostname   string   // Hostname
 	Domainname string   // Domainname

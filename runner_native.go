@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/moby/term"
 )
 
@@ -40,22 +43,26 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 	// cname is a simple canonical name that includes the
 	// container image name and params.
 	cname := conf.Image
+	if len(conf.Entrypoint) != 0 {
+		cname = cname + " entrypoint: " + strings.Join(conf.Entrypoint, " ")
+	}
 	if len(conf.Cmd) != 0 {
-		cname = cname + ": " + strings.Join(conf.Cmd, " ")
+		cname = cname + " cmd: " + strings.Join(conf.Cmd, " ")
 	}
 
 	logf(t, "creating (%s) as %s", cname, name)
 
-	exposedPorts := make(map[docker.Port]struct{})
+	exposedPorts := make(network.PortSet)
 	for _, port := range conf.Expose {
-		exposedPorts[docker.Port(port)] = struct{}{}
+		exposedPorts[network.MustParsePort(port)] = struct{}{}
 	}
 
-	c, err := r.config.Client.CreateContainer(
-		docker.CreateContainerOptions{
-			Name: name,
-			Config: &docker.Config{
+	cresp, err := r.config.Client.ContainerCreate(
+		t.Context(),
+		client.ContainerCreateOptions{
+			Config: &container.Config{
 				Image:        conf.Image,
+				Entrypoint:   conf.Entrypoint,
 				Cmd:          conf.Cmd,
 				Env:          conf.Env,
 				Hostname:     conf.Hostname,
@@ -64,31 +71,31 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 				Tty:          term.IsTerminal(os.Stdout.Fd()),
 				ExposedPorts: exposedPorts,
 			},
-			HostConfig: &docker.HostConfig{
+			HostConfig: &container.HostConfig{
 				Privileged: conf.Privileged,
 				Binds:      conf.Binds,
 			},
+			Name: name,
 		},
 	)
 	if err != nil {
 		fatalf(t, "Failed to create container: %s", err)
 	}
 
-	err = r.config.Client.StartContainer(c.ID, nil)
+	_, err = r.config.Client.ContainerStart(t.Context(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
 		fatalf(t, "Failed to start container: %v", err)
 	}
 
 	logf(t, "started (%s) as %s", cname, name)
 
-	cjson, err := r.config.Client.InspectContainer(c.ID)
-
+	cjsonResult, err := r.config.Client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		fatalf(t, "Failed to inspect: %v", err)
 	}
 
 	return &nativeContainer{
-		json:   cjson,
+		json:   cjsonResult.Container,
 		client: r.config.Client,
 		t:      t,
 	}
@@ -96,8 +103,8 @@ func (r *NativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 
 // nativeContainer implements Container for native Docker access via IP.
 type nativeContainer struct {
-	json     *docker.Container
-	client   *docker.Client
+	json     container.InspectResponse
+	client   client.APIClient
 	t        testing.TB
 	dropOnce sync.Once
 }
@@ -115,16 +122,11 @@ func (c *nativeContainer) Name() string {
 }
 
 func (c *nativeContainer) Address() string {
-	// First try the top-level IPAddress (older Docker versions)
-	if c.json.NetworkSettings.IPAddress != "" {
-		return c.json.NetworkSettings.IPAddress
-	}
-
 	// For newer Docker versions, the IP is in the Networks map
 	// Try to find an IP in any network (typically "bridge")
 	for _, network := range c.json.NetworkSettings.Networks {
-		if network.IPAddress != "" {
-			return network.IPAddress
+		if network.IPAddress.IsValid() {
+			return network.IPAddress.String()
 		}
 	}
 
@@ -134,7 +136,8 @@ func (c *nativeContainer) Address() string {
 func (c *nativeContainer) Drop() {
 	c.dropOnce.Do(func() {
 		// Try to stop the container, but don't fail if it's already stopped
-		err := c.client.StopContainer(c.json.ID, 10)
+		timeout := 10
+		_, err := c.client.ContainerStop(context.Background(), c.json.ID, client.ContainerStopOptions{Timeout: &timeout})
 		if err != nil {
 			// Check if the error is because the container is not running
 			// In that case, we can proceed to remove it
@@ -145,11 +148,9 @@ func (c *nativeContainer) Drop() {
 			}
 		}
 
-		err = c.client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:            c.json.ID,
+		_, err = c.client.ContainerRemove(context.Background(), c.json.ID, client.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
-			Context:       context.Background(),
 		})
 		if err != nil {
 			c.t.Fatal(err)
@@ -168,15 +169,32 @@ func (c *nativeContainer) Wait(port string, timeout time.Duration) error {
 }
 
 func (c *nativeContainer) Logs(stdout io.Writer, stderr io.Writer) error {
-	return c.client.Logs(docker.LogsOptions{
-		Container:    c.json.ID,
-		OutputStream: stdout,
-		ErrorStream:  stderr,
-		Stdout:       stdout != nil,
-		Stderr:       stderr != nil,
+	reader, err := c.client.ContainerLogs(c.t.Context(), c.json.ID, client.ContainerLogsOptions{
+		ShowStdout: stdout != nil,
+		ShowStderr: stderr != nil,
+		Follow:     false,
 	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = reader.Close() }()
+
+	if c.json.Config != nil && c.json.Config.Tty {
+		w := stdout
+		if w == nil {
+			w = stderr
+		}
+		if w == nil {
+			w = io.Discard
+		}
+		_, err := io.Copy(w, reader)
+		return err
+	}
+
+	_, err = stdcopy.StdCopy(stdout, stderr, reader)
+	return err
 }
 
 func (c *nativeContainer) Exec(cmd ...string) *Cmd {
-	return newDockerCmd(c.client, c.json.ID, cmd)
+	return newDockerCmd(c.t, c.client, c.json.ID, cmd)
 }

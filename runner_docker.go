@@ -11,7 +11,12 @@ import (
 	"testing"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"net/netip"
+
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/moby/term"
 )
 
@@ -109,21 +114,24 @@ func (r *DockerRunner) runInDocker() int {
 	}
 
 	// Create the container
-	container, err := r.config.Client.CreateContainer(docker.CreateContainerOptions{
-		Name: containerName,
-		Config: &docker.Config{
-			Image:      r.config.GoImage,
-			Cmd:        cmd,
-			Env:        env,
-			WorkingDir: workDir,
-			Tty:        false,
+	cresp, err := r.config.Client.ContainerCreate(
+		context.Background(),
+		client.ContainerCreateOptions{
+			Config: &container.Config{
+				Image:      r.config.GoImage,
+				Cmd:        cmd,
+				Env:        env,
+				WorkingDir: workDir,
+				Tty:        false,
+			},
+			HostConfig: &container.HostConfig{
+				NetworkMode: ConexNetworkName,
+				Binds:       binds,
+				AutoRemove:  true,
+			},
+			Name: containerName,
 		},
-		HostConfig: &docker.HostConfig{
-			NetworkMode: ConexNetworkName,
-			Binds:       binds,
-			AutoRemove:  true,
-		},
-	})
+	)
 	if err != nil {
 		fmt.Printf("conex: failed to create runner container: %v\n", err)
 		return r.config.RetCode
@@ -132,15 +140,14 @@ func (r *DockerRunner) runInDocker() int {
 	// Ensure cleanup
 	defer func() {
 		// AutoRemove should handle this, but let's be safe
-		_ = r.config.Client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:      container.ID,
-			Force:   true,
-			Context: context.Background(),
+		_, _ = r.config.Client.ContainerRemove(context.Background(), cresp.ID, client.ContainerRemoveOptions{
+			Force:         true,
+			RemoveVolumes: true,
 		})
 	}()
 
 	// Start the container
-	err = r.config.Client.StartContainer(container.ID, nil)
+	_, err = r.config.Client.ContainerStart(context.Background(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
 		fmt.Printf("conex: failed to start runner container: %v\n", err)
 		return r.config.RetCode
@@ -148,21 +155,31 @@ func (r *DockerRunner) runInDocker() int {
 
 	// Attach to get stdout/stderr
 	go func() {
-		_ = r.config.Client.Logs(docker.LogsOptions{
-			Container:    container.ID,
-			OutputStream: os.Stdout,
-			ErrorStream:  os.Stderr,
-			Stdout:       true,
-			Stderr:       true,
-			Follow:       true,
+		reader, err := r.config.Client.ContainerLogs(context.Background(), cresp.ID, client.ContainerLogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Follow:     true,
 		})
+		if err != nil {
+			return
+		}
+		defer func() { _ = reader.Close() }()
+		_, _ = stdcopy.StdCopy(os.Stdout, os.Stderr, reader)
 	}()
 
 	// Wait for container to finish
-	exitCode, err := r.config.Client.WaitContainer(container.ID)
-	if err != nil {
-		fmt.Printf("conex: failed to wait for runner container: %v\n", err)
-		return r.config.RetCode
+	waitRes := r.config.Client.ContainerWait(context.Background(), cresp.ID, client.ContainerWaitOptions{
+		Condition: container.WaitConditionNotRunning,
+	})
+	var exitCode int
+	select {
+	case err := <-waitRes.Error:
+		if err != nil {
+			fmt.Printf("conex: failed to wait for runner container: %v\n", err)
+			return r.config.RetCode
+		}
+	case status := <-waitRes.Result:
+		exitCode = int(status.StatusCode)
 	}
 
 	return exitCode
@@ -170,12 +187,12 @@ func (r *DockerRunner) runInDocker() int {
 
 // ensureNetwork creates the conex network if it doesn't exist.
 func (r *DockerRunner) ensureNetwork() error {
-	networks, err := r.config.Client.ListNetworks()
+	networks, err := r.config.Client.NetworkList(context.Background(), client.NetworkListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, net := range networks {
+	for _, net := range networks.Items {
 		if net.Name == ConexNetworkName {
 			r.networkID = net.ID
 			return nil
@@ -183,15 +200,14 @@ func (r *DockerRunner) ensureNetwork() error {
 	}
 
 	// Create the network
-	net, err := r.config.Client.CreateNetwork(docker.CreateNetworkOptions{
-		Name:   ConexNetworkName,
+	res, err := r.config.Client.NetworkCreate(context.Background(), ConexNetworkName, client.NetworkCreateOptions{
 		Driver: "bridge",
 	})
 	if err != nil {
 		return err
 	}
 
-	r.networkID = net.ID
+	r.networkID = res.ID
 	return nil
 }
 
@@ -206,27 +222,34 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 	}
 
 	cname := conf.Image
+	if len(conf.Entrypoint) != 0 {
+		cname = cname + " entrypoint: " + strings.Join(conf.Entrypoint, " ")
+	}
 	if len(conf.Cmd) != 0 {
-		cname = cname + ": " + strings.Join(conf.Cmd, " ")
+		cname = cname + " cmd: " + strings.Join(conf.Cmd, " ")
 	}
 
 	logf(t, "creating (%s) as %s on network %s", cname, name, ConexNetworkName)
 
-	exposedPorts := make(map[docker.Port]struct{})
-	portBindings := make(map[docker.Port][]docker.PortBinding)
+	exposedPorts := make(network.PortSet)
+	portBindings := make(network.PortMap)
 
 	for _, port := range conf.Expose {
-		dp := docker.Port(port)
+		dp := network.MustParsePort(port)
 		exposedPorts[dp] = struct{}{}
 		// Bind to random host port for potential debugging
-		portBindings[dp] = []docker.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}
+		portBindings[dp] = []network.PortBinding{{
+			HostIP:   netip.MustParseAddr("0.0.0.0"),
+			HostPort: "",
+		}}
 	}
 
-	c, err := r.config.Client.CreateContainer(
-		docker.CreateContainerOptions{
-			Name: name,
-			Config: &docker.Config{
+	cresp, err := r.config.Client.ContainerCreate(
+		t.Context(),
+		client.ContainerCreateOptions{
+			Config: &container.Config{
 				Image:        conf.Image,
+				Entrypoint:   conf.Entrypoint,
 				Cmd:          conf.Cmd,
 				Env:          conf.Env,
 				Hostname:     conf.Hostname,
@@ -235,29 +258,31 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 				Tty:          term.IsTerminal(os.Stdout.Fd()),
 				ExposedPorts: exposedPorts,
 			},
-			HostConfig: &docker.HostConfig{
+			HostConfig: &container.HostConfig{
 				NetworkMode:  ConexNetworkName,
 				PortBindings: portBindings,
 				Privileged:   conf.Privileged,
 				Binds:        conf.Binds,
 			},
+			Name: name,
 		},
 	)
 	if err != nil {
 		fatalf(t, "Failed to create container: %s", err)
 	}
 
-	err = r.config.Client.StartContainer(c.ID, nil)
+	_, err = r.config.Client.ContainerStart(t.Context(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
 		fatalf(t, "Failed to start container: %v", err)
 	}
 
 	logf(t, "started (%s) as %s", cname, name)
 
-	cjson, err := r.config.Client.InspectContainer(c.ID)
+	cjsonResult, err := r.config.Client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		fatalf(t, "Failed to inspect: %v", err)
 	}
+	cjson := cjsonResult.Container
 
 	// Determine how to address this container
 	var address string
@@ -266,19 +291,14 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		address = name
 	} else {
 		// We're on the host, try to use the container's IP on the conex network
-		if netSettings, ok := cjson.NetworkSettings.Networks[ConexNetworkName]; ok && netSettings.IPAddress != "" {
-			address = netSettings.IPAddress
+		if netSettings, ok := cjson.NetworkSettings.Networks[ConexNetworkName]; ok && netSettings.IPAddress.IsValid() {
+			address = netSettings.IPAddress.String()
 		} else {
-			// Fallback: try top-level IPAddress first
-			if cjson.NetworkSettings.IPAddress != "" {
-				address = cjson.NetworkSettings.IPAddress
-			} else {
-				// Try any available network
-				for _, network := range cjson.NetworkSettings.Networks {
-					if network.IPAddress != "" {
-						address = network.IPAddress
-						break
-					}
+			// Try any available network
+			for _, network := range cjson.NetworkSettings.Networks {
+				if network.IPAddress.IsValid() {
+					address = network.IPAddress.String()
+					break
 				}
 			}
 		}
@@ -295,9 +315,9 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 
 // dockerContainer implements Container for Docker network-based access.
 type dockerContainer struct {
-	json    *docker.Container
-	client  *docker.Client
-	t       testing.TB
+	json     container.InspectResponse
+	client   client.APIClient
+	t        testing.TB
 	name     string
 	address  string
 	dropOnce sync.Once
@@ -308,7 +328,7 @@ func (c *dockerContainer) ID() string {
 }
 
 func (c *dockerContainer) Image() string {
-	return c.json.Image
+	return c.json.Config.Image
 }
 
 func (c *dockerContainer) Name() string {
@@ -322,22 +342,12 @@ func (c *dockerContainer) Address() string {
 func (c *dockerContainer) Drop() {
 	c.dropOnce.Do(func() {
 		// Try to stop the container, but don't fail if it's already stopped
-		err := c.client.StopContainer(c.json.ID, 10)
-		if err != nil {
-			// Check if the error is because the container is not running
-			// In that case, we can proceed to remove it
-			if !strings.Contains(err.Error(), "is not running") &&
-				!strings.Contains(err.Error(), "Container not running") {
-				c.t.Log("failed to stop container: ", c.json.ID)
-				c.t.Fatal(err)
-			}
-		}
+		timeout := 10
+		_, _ = c.client.ContainerStop(context.Background(), c.json.ID, client.ContainerStopOptions{Timeout: &timeout})
 
-		err = c.client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:            c.json.ID,
+		_, err := c.client.ContainerRemove(context.Background(), c.json.ID, client.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
-			Context:       context.Background(),
 		})
 		if err != nil {
 			c.t.Fatal(err)
@@ -356,21 +366,38 @@ func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
 }
 
 func (c *dockerContainer) Exec(cmd ...string) *Cmd {
-	return newDockerCmd(c.client, c.json.ID, cmd)
+	return newDockerCmd(c.t, c.client, c.json.ID, cmd)
 }
 
 // Logs writes the container logs to the provided stdout and stderr writers.
 func (c *dockerContainer) Logs(stdout io.Writer, stderr io.Writer) error {
-	return c.client.Logs(docker.LogsOptions{
-		Container:    c.json.ID,
-		OutputStream: stdout,
-		ErrorStream:  stderr,
-		Stdout:       stdout != nil,
-		Stderr:       stderr != nil,
+	reader, err := c.client.ContainerLogs(c.t.Context(), c.json.ID, client.ContainerLogsOptions{
+		ShowStdout: stdout != nil,
+		ShowStderr: stderr != nil,
+		Follow:     false,
 	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = reader.Close() }()
+
+	if c.json.Config != nil && c.json.Config.Tty {
+		w := stdout
+		if w == nil {
+			w = stderr
+		}
+		if w == nil {
+			w = io.Discard
+		}
+		_, err := io.Copy(w, reader)
+		return err
+	}
+
+	_, err = stdcopy.StdCopy(stdout, stderr, reader)
+	return err
 }
 
-func newDockerCmd(client *docker.Client, containerID string, cmd []string) *Cmd {
+func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []string) *Cmd {
 	if len(cmd) == 0 {
 		return nil
 	}
@@ -395,8 +422,7 @@ func newDockerCmd(client *docker.Client, containerID string, cmd []string) *Cmd 
 	errCh := make(chan error, 1)
 
 	c.start = func() error {
-		opts := docker.CreateExecOptions{
-			Container:    containerID,
+		opts := client.ExecCreateOptions{
 			Cmd:          c.Args,
 			Env:          c.Env,
 			WorkingDir:   c.Dir,
@@ -405,28 +431,41 @@ func newDockerCmd(client *docker.Client, containerID string, cmd []string) *Cmd 
 			AttachStderr: true,
 		}
 
-		execInfo, err := client.CreateExec(opts)
+		execInfo, err := cli.ExecCreate(t.Context(), containerID, opts)
 		if err != nil {
 			return err
 		}
 		execID = execInfo.ID
 
 		go func() {
-			errCh <- client.StartExec(execID, docker.StartExecOptions{
-				InputStream:  c.Stdin,
-				OutputStream: c.Stdout,
-				ErrorStream:  c.Stderr,
+			resp, err := cli.ExecAttach(t.Context(), execID, client.ExecAttachOptions{
+				TTY: false,
 			})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			defer resp.Close()
+
+			if c.Stdin != nil {
+				go func() {
+					_, _ = io.Copy(resp.Conn, c.Stdin)
+					_ = resp.CloseWrite()
+				}()
+			}
+
+			_, copyErr := stdcopy.StdCopy(c.Stdout, c.Stderr, resp.Reader)
+			errCh <- copyErr
 		}()
 		return nil
 	}
 
 	c.wait = func() error {
 		err := <-errCh
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return err
 		}
-		execInspect, err := client.InspectExec(execID)
+		execInspect, err := cli.ExecInspect(t.Context(), execID, client.ExecInspectOptions{})
 		if err != nil {
 			return err
 		}

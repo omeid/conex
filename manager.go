@@ -1,7 +1,9 @@
 package conex
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,9 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/pkg/stringid"
 	units "github.com/docker/go-units"
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/moby/go-archive"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/stringid"
 )
 
 // RunnerType specifies which runner implementation to use.
@@ -93,7 +97,7 @@ func newManager(conf *managerConfig) Manager {
 
 type manager struct {
 	conf    *managerConfig
-	client  *docker.Client
+	client  client.APIClient
 	counter *counter
 	runner  Runner
 }
@@ -149,14 +153,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		return ret
 	}
 
-	// Ensure DOCKER_API_VERSION is set so go-dockerclient negotiates
-	// correctly. Without it, the client defaults to 1.25 which is
-	// rejected by modern Docker daemons.
-	if os.Getenv("DOCKER_API_VERSION") == "" {
-		os.Setenv("DOCKER_API_VERSION", "1.43")
-	}
-
-	mn.client, err = docker.NewClientFromEnv()
+	mn.client, err = client.New(client.FromEnv)
 	if err != nil {
 		fmt.Println(err)
 		return mn.conf.retcode
@@ -165,7 +162,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	// Ping the Docker server to initialize the client's API version.
 	// This prevents a race condition in go-dockerclient when multiple
 	// goroutines call methods that trigger checkAPIVersion() concurrently.
-	if err := mn.client.Ping(); err != nil {
+	if _, err := mn.client.Ping(context.Background(), client.PingOptions{}); err != nil {
 		fmt.Println("Failed to ping Docker:", err)
 		return mn.conf.retcode
 	}
@@ -269,28 +266,18 @@ func (mn *manager) pull(images []string) error {
 	fmt.Fprintf(os.Stderr, "=== conex: Pulling Images\n")
 
 	l := len(images)
-	for i, image := range images {
-		if strings.HasPrefix(image, "conexbuild/") {
+	for i, ref := range images {
+		if strings.HasPrefix(ref, "conexbuild/") {
 			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", image, i+1, l)
+		fmt.Fprintf(os.Stderr, "--- Pulling %s (%d of %d)\n", ref, i+1, l)
 
-		repo, tag := docker.ParseRepositoryTag(image)
-		if tag == "" {
-			tag = "latest"
-		}
-
-		err := mn.client.PullImage(
-			docker.PullImageOptions{
-				Repository:   repo,
-				Tag:          tag,
-				OutputStream: os.Stderr,
-			},
-			docker.AuthConfiguration{},
-		)
-
+		reader, err := mn.client.ImagePull(context.Background(), ref, client.ImagePullOptions{})
 		if err != nil {
+			return err
+		}
+		if err := printPullProgress(context.Background(), reader); err != nil {
 			return err
 		}
 	}
@@ -307,22 +294,33 @@ func (mn *manager) build(images []string) error {
 	log.Println()
 	fmt.Fprintf(os.Stderr, "=== conex: Building Images\n")
 
-	for i, image := range images {
-		tag := dockerfileTag(image)
-		fmt.Fprintf(os.Stderr, "--- Building %s as %s (%d of %d)\n", image, tag, i+1, len(images))
+	for i, img := range images {
+		tag := dockerfileTag(img)
+		fmt.Fprintf(os.Stderr, "--- Building %s as %s (%d of %d)\n", img, tag, i+1, len(images))
 
-		dir := filepath.Dir(image)
-		dockerfileName := filepath.Base(image)
+		dir := filepath.Dir(img)
+		dockerfileName := filepath.Base(img)
 
-		err := mn.client.BuildImage(docker.BuildImageOptions{
-			Name:         tag,
-			Dockerfile:   dockerfileName,
-			ContextDir:   dir,
-			OutputStream: os.Stderr,
-		})
-
+		buildCtx, err := archive.TarWithOptions(dir, &archive.TarOptions{})
 		if err != nil {
-			return fmt.Errorf("build %s: %w", image, err)
+			return fmt.Errorf("archive %s: %w", img, err)
+		}
+
+		res, err := mn.client.ImageBuild(context.Background(), buildCtx, client.ImageBuildOptions{
+			Tags:       []string{tag},
+			Dockerfile: dockerfileName,
+			Remove:     true,
+		})
+		if err != nil {
+			_ = buildCtx.Close()
+			return fmt.Errorf("build %s: %w", img, err)
+		}
+
+		_, err = io.Copy(os.Stderr, res.Body)
+		_ = res.Body.Close()
+		_ = buildCtx.Close()
+		if err != nil {
+			return fmt.Errorf("build stream %s: %w", img, err)
 		}
 	}
 
@@ -396,10 +394,11 @@ func (mn *manager) ensure(images []string) error {
 
 	for index, ref := range images {
 
-		img, err := mn.client.InspectImage(ref)
+		res, err := mn.client.ImageInspect(context.Background(), ref)
 		if err != nil {
 			return err
 		}
+		img := res.InspectResponse
 
 		err = printImg(width, ref, index, is, img)
 		if err != nil {
@@ -440,7 +439,11 @@ func (mn *manager) tartPull(images []string) error {
 	return nil
 }
 
-func printImg(width int, ref string, index int, total int, img *docker.Image) error {
+func printImg(width int, ref string, index int, total int, img image.InspectResponse) error {
+	createdTime, err := time.Parse(time.RFC3339Nano, img.Created)
+	if err != nil {
+		createdTime, _ = time.Parse(time.RFC3339, img.Created)
+	}
 
 	fmt.Fprintf(os.Stderr, "--- Found (%d of %d) %-*s %s %10s ago\n",
 		index+1,
@@ -448,7 +451,7 @@ func printImg(width int, ref string, index int, total int, img *docker.Image) er
 		width,
 		ref,
 		stringid.TruncateID(img.ID),
-		units.HumanDuration(time.Now().UTC().Sub(img.Created)),
+		units.HumanDuration(time.Now().UTC().Sub(createdTime)),
 	)
 
 	return nil
@@ -464,3 +467,5 @@ func maxWidth(str []string) int {
 	}
 	return max
 }
+
+

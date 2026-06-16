@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.1.0] - 2026-06-16
+
+### Added
+- **Test-scoped Contexts**: Switched container and exec operations to use Go 1.24+ `t.Context()` to tie container/command execution context lifetimes to the lifecycle of their parent tests.
+- **Container Entrypoint Configuration**: Added support for setting custom container entrypoints in the container `Config` struct, ensuring they are propagated correctly to native and docker runners.
+
+### Changed
+- **Migration to Official Moby SDK**: Upgraded project dependencies, replacing the legacy `go-dockerclient` client and package references with the official `github.com/moby/moby/client` and related API packages.
+
 ## [v0.0.8] - 2026-06-13
 
 ### Changed

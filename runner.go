@@ -3,7 +3,7 @@ package conex
 import (
 	"testing"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/moby/moby/client"
 )
 
 // Runner is an abstraction that allows running tests either natively on the host
@@ -21,7 +21,7 @@ type Runner interface {
 
 // RunnerConfig holds configuration for creating a runner.
 type RunnerConfig struct {
-	Client     *docker.Client
+	Client     client.APIClient
 	Name       string // prefix for container names
 	PullImages bool
 	Images     []string
