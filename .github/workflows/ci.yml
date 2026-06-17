@@ -25,8 +25,9 @@ jobs:
           go-version: ${{ matrix.go == 'master' && 'stable' || matrix.go }}
           check-latest: ${{ matrix.go == 'master' }}
 
-      - name: Get boxes
-        run: ./ci/get_boxes.sh
-
       - name: Run tests
         run: go test -v -race ./...
+
+      - name: Test Dependencies 
+        run: ./ci/test_deps.sh
+

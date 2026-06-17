@@ -42,15 +42,16 @@ import (
   "testing"
 
   "github.com/omeid/conex"
-  "github.com/conex/postgresql"
+  "github.com/conex/postgres"
+  _ "github.com/lib/pq" // Bring your own driver!
 )
 
 func TestMain(m *testing.M) {
   conex.Main(m)
 }
 
-func TestPostgreSQL(t *testing.T) {
-  db, container := postgresql.Box(t)
+func TestPostgres(t *testing.T) {
+  db, container := postgres.Box(t, nil)
 
  _ = db
   // use db to interact with the postgresql database
@@ -88,12 +89,15 @@ A driver usually:
 
 See the [echo box source](https://github.com/conex/echo/blob/master/echo.go) for a concrete example.
 
-Available boxes from `github.com/conex/*`:
-- [Echo](https://github.com/conex/echo)
-- [PostgreSQL](https://github.com/conex/postgres)
+Available boxes from [`github.com/conex/*`](https://github.com/conex):
+- [CockroachDB](https://github.com/conex/cockroachdb)
+- [MinIO](https://github.com/conex/minio)
 - [Mongo](https://github.com/conex/mongodb)
 - [MySQL](https://github.com/conex/mysql)
+- [NATS](https://github.com/conex/nats)
+- [PostgreSQL](https://github.com/conex/postgres)
 - [Redis](https://github.com/conex/redis)
+- [Redpanda](https://github.com/conex/redpanda)
 - [RethinkDB](https://github.com/conex/rethinkdb)
 
 ## Image References
