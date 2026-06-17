@@ -2,6 +2,11 @@ module github.com/omeid/conex
 
 go 1.26.4
 
+retract (
+	v0.10.0
+	v0.1.0
+)
+
 require (
 	github.com/docker/go-connections v0.7.0
 	github.com/docker/go-units v0.5.0

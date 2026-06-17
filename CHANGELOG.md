@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.1.0] - 2026-06-16
+## [v0.1.1] - 2026-06-16
 
 ### Added
 - **Exported Logger**: Exported `Logf` to allow plugins to uniformly log test output (e.g. `conex: plugin: message`) without standard test file and line number prefixes.
