@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.2] - 2026-06-18
+### Added
+- **Exported DockerfileTag**: Exported `DockerfileTag` function which allows mapping from a Dockerfile name/path to the image tag used by conex.
+
 ## [v0.1.1] - 2026-06-16
 
 ### Added

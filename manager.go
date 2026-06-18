@@ -117,7 +117,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	if os.Getenv(ConexRunnerEnv) == "1" {
 		for i, img := range allImages {
 			if isDockerfile(img) {
-				allImages[i] = dockerfileTag(img)
+				allImages[i] = DockerfileTag(img)
 			}
 		}
 	}
@@ -246,7 +246,7 @@ func (mn *manager) Box(t testing.TB, conf *Config) Container {
 	resolvedConf := conf
 	if isDockerfile(conf.Image) {
 		copy := *conf
-		copy.Image = dockerfileTag(conf.Image)
+		copy.Image = DockerfileTag(conf.Image)
 		resolvedConf = &copy
 	}
 	name := mn.boxName(t.Name(), resolvedConf.Image)
@@ -295,7 +295,7 @@ func (mn *manager) build(images []string) error {
 	fmt.Fprintf(os.Stderr, "=== conex: Building Images\n")
 
 	for i, img := range images {
-		tag := dockerfileTag(img)
+		tag := DockerfileTag(img)
 		fmt.Fprintf(os.Stderr, "--- Building %s as %s (%d of %d)\n", img, tag, i+1, len(images))
 
 		dir := filepath.Dir(img)
@@ -337,9 +337,9 @@ func isDockerfile(image string) bool {
 	return strings.HasPrefix(base, "Dockerfile")
 }
 
-// dockerfileTag generates a conex image tag from a Dockerfile path.
+// DockerfileTag generates a conex image tag from a Dockerfile path.
 // e.g. "./testdata/Dockerfile.ssh" -> "conexbuild/dockerfile-ssh"
-func dockerfileTag(path string) string {
+func DockerfileTag(path string) string {
 	base := filepath.Base(path)
 	base = strings.ToLower(base)
 	base = strings.ReplaceAll(base, ".", "-")
@@ -360,7 +360,7 @@ func splitImageRefs(images []string) (pullImages []string, buildImages []string)
 func dockerfileTags(images []string) []string {
 	tags := make([]string, 0, len(images))
 	for _, image := range images {
-		tags = append(tags, dockerfileTag(image))
+		tags = append(tags, DockerfileTag(image))
 	}
 	return tags
 }
@@ -467,5 +467,3 @@ func maxWidth(str []string) int {
 	}
 	return max
 }
-
-
