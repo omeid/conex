@@ -3,7 +3,6 @@ package conex
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -316,11 +315,10 @@ func (mn *manager) build(images []string) error {
 			return fmt.Errorf("build %s: %w", img, err)
 		}
 
-		_, err = io.Copy(os.Stderr, res.Body)
-		_ = res.Body.Close()
+		err = printBuildProgress(context.Background(), res.Body)
 		_ = buildCtx.Close()
 		if err != nil {
-			return fmt.Errorf("build stream %s: %w", img, err)
+			return fmt.Errorf("build %s: %w", img, err)
 		}
 	}
 

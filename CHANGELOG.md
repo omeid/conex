@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.3] - 2026-06-18
+### Changed 
+- **Build Logs**: Imporved docker build logs after migration to official moby client.
+
 ## [v0.1.2] - 2026-06-18
 ### Added
 - **Exported DockerfileTag**: Exported `DockerfileTag` function which allows mapping from a Dockerfile name/path to the image tag used by conex.

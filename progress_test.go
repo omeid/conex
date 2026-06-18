@@ -222,3 +222,62 @@ func TestPrintPullProgress(t *testing.T) {
 		}
 	})
 }
+
+func TestPrintBuildProgress(t *testing.T) {
+	oldProgressOut := progressOut
+	defer func() {
+		progressOut = oldProgressOut
+	}()
+
+	var buf bytes.Buffer
+	progressOut = &buf
+
+	t.Run("Successful Build", func(t *testing.T) {
+		buf.Reset()
+		jsonStream := `{"stream":"Step 1/3 : FROM alpine\n"}
+{"stream":" ---> d9e853e87e55\n"}`
+		body := io.NopCloser(strings.NewReader(jsonStream))
+		err := printBuildProgress(context.Background(), body)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "    Step 1/3 : FROM alpine\n     ---> d9e853e87e55\n"
+		if buf.String() != expected {
+			t.Errorf("expected %q, got %q", expected, buf.String())
+		}
+	})
+
+	t.Run("Build Error", func(t *testing.T) {
+		buf.Reset()
+		jsonStream := `{"stream":"Step 1/3 : FROM alpine\n"}
+{"errorDetail":{"message":"manifest not found"},"error":"manifest not found"}`
+		body := io.NopCloser(strings.NewReader(jsonStream))
+		err := printBuildProgress(context.Background(), body)
+		if err == nil {
+			t.Fatalf("expected error, got nil")
+		}
+		if err.Error() != "manifest not found" {
+			t.Errorf("expected 'manifest not found', got %v", err)
+		}
+		if buf.String() != "    Step 1/3 : FROM alpine\n" {
+			t.Errorf("expected partial stream output, got %q", buf.String())
+		}
+	})
+
+	t.Run("Context Cancelled", func(t *testing.T) {
+		buf.Reset()
+		jsonStream := `{"stream":"Step 1/3 : FROM alpine\n"}`
+		body := io.NopCloser(strings.NewReader(jsonStream))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // immediately cancel
+
+		err := printBuildProgress(ctx, body)
+		if err == nil {
+			t.Fatalf("expected context cancelled error, got nil")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled, got %v", err)
+		}
+	})
+}

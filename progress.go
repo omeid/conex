@@ -1,7 +1,9 @@
 package conex
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -45,24 +47,24 @@ func printPullProgress(ctx context.Context, response client.ImagePullResponse) e
 					layers[msg.ID] = idx
 					layerList = append(layerList, msg.ID)
 					// Print a new line to allocate space for this layer
-					fmt.Fprintln(progressOut)
+					_, _ = fmt.Fprintln(progressOut)
 				}
 				// Go up to the layer's line, print, and go back down
 				diff := len(layerList) - idx + extraLines
 				barStr := formatProgress(msg.Progress)
-				fmt.Fprintf(progressOut, "\033[%dA\r\033[K%-12s: %-15s%s\033[%dB\r", diff, msg.ID, msg.Status, barStr, diff)
+				_, _ = fmt.Fprintf(progressOut, "\033[%dA\r\033[K%-12s: %-15s%s\033[%dB\r", diff, msg.ID, msg.Status, barStr, diff)
 			} else if msg.Status != "" {
-				fmt.Fprintln(progressOut, msg.Status)
+				_, _ = fmt.Fprintln(progressOut, msg.Status)
 				extraLines++
 			}
 		} else {
 			if msg.ID != "" {
 				if lastStatus[msg.ID] != msg.Status {
 					lastStatus[msg.ID] = msg.Status
-					fmt.Fprintf(progressOut, "%-12s: %s\n", msg.ID, msg.Status)
+					_, _ = fmt.Fprintf(progressOut, "%-12s: %s\n", msg.ID, msg.Status)
 				}
 			} else if msg.Status != "" {
-				fmt.Fprintln(progressOut, msg.Status)
+				_, _ = fmt.Fprintln(progressOut, msg.Status)
 			}
 		}
 	}
@@ -117,4 +119,44 @@ func formatSize(size int64, unit string) string {
 		return fmt.Sprintf("%.2f KB", float64(size)/kb)
 	}
 	return fmt.Sprintf("%d B", size)
+}
+
+// printBuildProgress decodes the JSON messages from the ImageBuildResponse and
+// prints the build stream output to os.Stderr, returning an error if the build fails.
+func printBuildProgress(ctx context.Context, body io.ReadCloser) error {
+	defer func() { _ = body.Close() }()
+	dec := json.NewDecoder(body)
+	newLine := true
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		var msg jsonstream.Message
+		if err := dec.Decode(&msg); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("decode: %w", err)
+		}
+		if msg.Error != nil {
+			return fmt.Errorf("%s", msg.Error.Message)
+		}
+		if msg.Stream != "" {
+			var buf bytes.Buffer
+			for _, c := range []byte(msg.Stream) {
+				if newLine {
+					buf.WriteString("    ")
+					newLine = false
+				}
+				buf.WriteByte(c)
+				if c == '\n' {
+					newLine = true
+				}
+			}
+			_, _ = fmt.Fprint(progressOut, buf.String())
+		}
+	}
 }
