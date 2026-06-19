@@ -28,6 +28,9 @@ jobs:
       - name: Run tests
         run: go test -v -race ./...
 
+      - name: Run glibctest with CGO_ENABLED=0
+        run: CGO_ENABLED=0 go test -v ./internal/glibctest
+
       - name: Test Dependencies 
         run: ./ci/test_deps.sh
 

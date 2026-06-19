@@ -111,13 +111,15 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		return mn.conf.retcode
 	}
 
-	allImages := dedupeImages(append(append([]string{}, mn.conf.images...), images...))
+	allImages := append(append([]string{}, mn.conf.images...), images...)
+	if mn.conf.runner == RunnerDocker && mn.conf.goImage != "" {
+		allImages = append(allImages, mn.conf.goImage)
+	}
+	allImages = dedupeImages(allImages)
 
 	if os.Getenv(ConexRunnerEnv) == "1" {
 		for i, img := range allImages {
-			if isDockerfile(img) {
-				allImages[i] = DockerfileTag(img)
-			}
+			allImages[i] = DockerfileTag(img)
 		}
 	}
 
@@ -144,7 +146,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		PullImages: mn.conf.pullImages,
 		Images:     allImages,
 		RetCode:    mn.conf.retcode,
-		GoImage:    mn.conf.goImage,
+		GoImage:    DockerfileTag(mn.conf.goImage),
 	}
 
 	// Create the appropriate runner
@@ -157,12 +159,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		mn.runner = newNativeRunner(mn.client, config)
 	}
 
-	prepareImages := append([]string{}, allImages...)
-	if mn.conf.runner == RunnerDocker && mn.conf.goImage != "" {
-		prepareImages = append(prepareImages, mn.conf.goImage)
-	}
-
-	pullImages, buildImages := splitImageRefs(prepareImages)
+	pullImages, buildImages := splitImageRefs(allImages)
 
 	if mn.conf.pullImages {
 		err = mn.pull(pullImages)
@@ -303,6 +300,9 @@ func isDockerfile(image string) bool {
 // DockerfileTag generates a conex image tag from a Dockerfile path.
 // e.g. "./testdata/Dockerfile.ssh" -> "conexbuild/dockerfile-ssh"
 func DockerfileTag(path string) string {
+	if !isDockerfile(path) {
+		return path
+	}
 	base := filepath.Base(path)
 	base = strings.ToLower(base)
 	base = strings.ReplaceAll(base, ".", "-")

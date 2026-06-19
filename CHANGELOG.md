@@ -2,6 +2,7 @@
 
 ## [v0.1.4] - 2026-06-19
 ### Added
+- **Glibc Detection**: `Docker Runner` detects and handles glibc requirement for `GoImage`.
 - **Tart Pull Logs**: Implemented real-time streaming for Tart VM image pull progress with standardized prefix padding.
 
 ### Changed

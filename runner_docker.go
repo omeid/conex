@@ -1,6 +1,7 @@
 package conex
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -88,7 +89,7 @@ func (r *dockerRunner) runInDocker() int {
 	// Create container name
 	containerName := fmt.Sprintf("%s-runner", r.config.Name)
 
-	Logf(nil, "conex", "Running tests inside container (%s)\n", r.config.GoImage)
+	Logf(nil, "conex", "Running tests inside container (%s)", r.config.GoImage)
 
 	// Mount the test binary and working directory
 	binds := []string{
@@ -111,6 +112,23 @@ func (r *dockerRunner) runInDocker() int {
 			strings.HasPrefix(e, "GO") ||
 			strings.HasPrefix(e, "PATH=") {
 			env = append(env, e)
+		}
+	}
+
+	if os.Getenv("CGO_ENABLED") != "0" {
+		hasGlibc, err := r.glibcVersion(context.Background(), r.config.GoImage)
+		if err != nil {
+			Logf(nil, "conex", "failed to check if GoImage has libc: %v\n", err)
+			return r.config.RetCode
+		}
+		if !hasGlibc {
+			Logf(
+				nil,
+				"conex",
+				"gnu libc not found in %s, but CGO_ENABLED is not 0. You must disable cgo (CGO_ENABLED=0) to run tests in this image.",
+				r.config.GoImage,
+			)
+			return r.config.RetCode
 		}
 	}
 
@@ -468,4 +486,73 @@ func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []
 	}
 
 	return c
+}
+
+func (r *dockerRunner) glibcVersion(ctx context.Context, image string) (bool, error) {
+	// Short circuit for common images to avoid container creation
+	if strings.Contains(image, "alpine") {
+		return false, nil
+	}
+	if strings.HasPrefix(image, "golang:") || image == "golang" {
+		return true, nil
+	}
+
+	cresp, err := r.client.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
+			Image:      image,
+			Entrypoint: []string{"sh", "-c", "getconf GNU_LIBC_VERSION"},
+			Tty:        false,
+		},
+		HostConfig: &container.HostConfig{
+			AutoRemove: true,
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+
+	logs, err := r.client.ContainerLogs(ctx, cresp.ID, client.ContainerLogsOptions{
+		ShowStderr: true,
+		ShowStdout: true,
+		Follow:     true,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	var stdout, stderr bytes.Buffer
+	go func() {
+		defer logs.Close()
+		_, _ = stdcopy.StdCopy(&stdout, &stderr, logs)
+	}()
+
+	if _, err := r.client.ContainerStart(ctx, cresp.ID, client.ContainerStartOptions{}); err != nil {
+		return false, err
+	}
+	waitRes := r.client.ContainerWait(ctx, cresp.ID, client.ContainerWaitOptions{
+		Condition: container.WaitConditionNextExit,
+	})
+
+	var statusCode int64
+	select {
+	case err := <-waitRes.Error:
+		return false, err
+	case result := <-waitRes.Result:
+		statusCode = result.StatusCode
+	}
+
+	if statusCode == 0 {
+		return true, nil
+	}
+
+	errStr := strings.TrimSpace(stderr.String())
+	if errStr == "" {
+		errStr = strings.TrimSpace(stdout.String())
+	}
+
+	if strings.Contains(errStr, "unknown variable") || strings.Contains(errStr, "not found") {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("getconf failed: exit code %d, output: %s", statusCode, errStr)
 }
