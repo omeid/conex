@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.1.4] - 2026-06-19
+### Added
+- **Tart Pull Logs**: Implemented real-time streaming for Tart VM image pull progress with standardized prefix padding.
+
+### Changed
+- **Improved Logging**: Centralized all internal logging into `Logf` with buffering to avoid overlaps.
+- **Better Exec**: Improved the Container.Exec ergonomics. 
+
 ## [v0.1.3] - 2026-06-18
 ### Changed 
 - **Build Logs**: Imporved docker build logs after migration to official moby client.

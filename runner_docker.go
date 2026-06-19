@@ -28,28 +28,29 @@ const (
 )
 
 func init() {
-	var _ Runner = (*DockerRunner)(nil)
+	var _ runner = (*dockerRunner)(nil)
 	var _ Container = (*dockerContainer)(nil)
 }
 
-// DockerRunner runs tests inside a Docker container on the same network
+// dockerRunner runs tests inside a Docker container on the same network
 // as other conex containers. This allows conex to work on systems where
 // container IPs are not directly accessible (e.g., Docker for Mac).
-type DockerRunner struct {
-	config    *RunnerConfig
+type dockerRunner struct {
+	*nativeRunner
 	networkID string
 }
 
-// NewDockerRunner creates a new Docker runner.
-func NewDockerRunner(config *RunnerConfig) *DockerRunner {
-	return &DockerRunner{config: config}
+func NewDockerRunner(client client.APIClient, config *runnerConfig) runner {
+	return &dockerRunner{
+		nativeRunner: newNativeRunner(client, config).(*nativeRunner),
+	}
 }
 
 // Run executes the tests. If we're already inside a Docker container
 // (detected by environment variable), it just runs the tests.
 // Otherwise, it creates a container, mounts the current directory,
 // and runs the tests inside it.
-func (r *DockerRunner) Run(m *testing.M) int {
+func (r *dockerRunner) Run(m *testing.M) int {
 	// If we're already inside the container, just run the tests
 	if os.Getenv(ConexRunnerEnv) == "1" {
 		return m.Run()
@@ -60,23 +61,23 @@ func (r *DockerRunner) Run(m *testing.M) int {
 }
 
 // runInDocker creates a container and runs the test binary inside it.
-func (r *DockerRunner) runInDocker() int {
+func (r *dockerRunner) runInDocker() int {
 	// Ensure the network exists
 	if err := r.ensureNetwork(); err != nil {
-		fmt.Printf("conex: failed to create network: %v\n", err)
+		Logf(nil, "conex", "failed to create network: %v\n", err)
 		return r.config.RetCode
 	}
 
 	// Get the test binary path and working directory
 	testBinary, err := filepath.Abs(os.Args[0])
 	if err != nil {
-		fmt.Printf("conex: failed to get test binary path: %v\n", err)
+		Logf(nil, "conex", "failed to get test binary path: %v\n", err)
 		return r.config.RetCode
 	}
 
 	workDir, err := os.Getwd()
 	if err != nil {
-		fmt.Printf("conex: failed to get working directory: %v\n", err)
+		Logf(nil, "conex", "failed to get working directory: %v\n", err)
 		return r.config.RetCode
 	}
 
@@ -87,7 +88,7 @@ func (r *DockerRunner) runInDocker() int {
 	// Create container name
 	containerName := fmt.Sprintf("%s-runner", r.config.Name)
 
-	fmt.Printf("=== conex: Running tests inside container (%s)\n", r.config.GoImage)
+	Logf(nil, "conex", "Running tests inside container (%s)\n", r.config.GoImage)
 
 	// Mount the test binary and working directory
 	binds := []string{
@@ -114,7 +115,7 @@ func (r *DockerRunner) runInDocker() int {
 	}
 
 	// Create the container
-	cresp, err := r.config.Client.ContainerCreate(
+	cresp, err := r.client.ContainerCreate(
 		context.Background(),
 		client.ContainerCreateOptions{
 			Config: &container.Config{
@@ -133,29 +134,29 @@ func (r *DockerRunner) runInDocker() int {
 		},
 	)
 	if err != nil {
-		fmt.Printf("conex: failed to create runner container: %v\n", err)
+		Logf(nil, "conex", "failed to create runner container: %v\n", err)
 		return r.config.RetCode
 	}
 
 	// Ensure cleanup
 	defer func() {
 		// AutoRemove should handle this, but let's be safe
-		_, _ = r.config.Client.ContainerRemove(context.Background(), cresp.ID, client.ContainerRemoveOptions{
+		_, _ = r.client.ContainerRemove(context.Background(), cresp.ID, client.ContainerRemoveOptions{
 			Force:         true,
 			RemoveVolumes: true,
 		})
 	}()
 
 	// Start the container
-	_, err = r.config.Client.ContainerStart(context.Background(), cresp.ID, client.ContainerStartOptions{})
+	_, err = r.client.ContainerStart(context.Background(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
-		fmt.Printf("conex: failed to start runner container: %v\n", err)
+		Logf(nil, "conex", "failed to start runner container: %v\n", err)
 		return r.config.RetCode
 	}
 
 	// Attach to get stdout/stderr
 	go func() {
-		reader, err := r.config.Client.ContainerLogs(context.Background(), cresp.ID, client.ContainerLogsOptions{
+		reader, err := r.client.ContainerLogs(context.Background(), cresp.ID, client.ContainerLogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
@@ -168,14 +169,14 @@ func (r *DockerRunner) runInDocker() int {
 	}()
 
 	// Wait for container to finish
-	waitRes := r.config.Client.ContainerWait(context.Background(), cresp.ID, client.ContainerWaitOptions{
+	waitRes := r.client.ContainerWait(context.Background(), cresp.ID, client.ContainerWaitOptions{
 		Condition: container.WaitConditionNotRunning,
 	})
 	var exitCode int
 	select {
 	case err := <-waitRes.Error:
 		if err != nil {
-			fmt.Printf("conex: failed to wait for runner container: %v\n", err)
+			Logf(nil, "conex", "failed to wait for runner container: %v\n", err)
 			return r.config.RetCode
 		}
 	case status := <-waitRes.Result:
@@ -186,8 +187,8 @@ func (r *DockerRunner) runInDocker() int {
 }
 
 // ensureNetwork creates the conex network if it doesn't exist.
-func (r *DockerRunner) ensureNetwork() error {
-	networks, err := r.config.Client.NetworkList(context.Background(), client.NetworkListOptions{})
+func (r *dockerRunner) ensureNetwork() error {
+	networks, err := r.client.NetworkList(context.Background(), client.NetworkListOptions{})
 	if err != nil {
 		return err
 	}
@@ -200,7 +201,7 @@ func (r *DockerRunner) ensureNetwork() error {
 	}
 
 	// Create the network
-	res, err := r.config.Client.NetworkCreate(context.Background(), ConexNetworkName, client.NetworkCreateOptions{
+	res, err := r.client.NetworkCreate(context.Background(), ConexNetworkName, client.NetworkCreateOptions{
 		Driver: "bridge",
 	})
 	if err != nil {
@@ -213,11 +214,11 @@ func (r *DockerRunner) ensureNetwork() error {
 
 // Box creates a container on the conex network and returns a Container
 // that uses the container name for connections.
-func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
+func (r *dockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 	// Ensure network exists
 	if r.networkID == "" {
 		if err := r.ensureNetwork(); err != nil {
-			fatalf(t, "Failed to ensure network: %v", err)
+			fatalf(t, "", "Failed to ensure network: %v", err)
 		}
 	}
 
@@ -229,7 +230,7 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		cname = cname + " cmd: " + strings.Join(conf.Cmd, " ")
 	}
 
-	Logf(t, "", "creating (%s) as %s on network %s", cname, name, ConexNetworkName)
+	Logf(t, "conex", "creating (%s) as %s on network %s", cname, name, ConexNetworkName)
 
 	exposedPorts := make(network.PortSet)
 	portBindings := make(network.PortMap)
@@ -244,7 +245,7 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		}}
 	}
 
-	cresp, err := r.config.Client.ContainerCreate(
+	cresp, err := r.client.ContainerCreate(
 		t.Context(),
 		client.ContainerCreateOptions{
 			Config: &container.Config{
@@ -268,19 +269,19 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		},
 	)
 	if err != nil {
-		fatalf(t, "Failed to create container: %s", err)
+		fatalf(t, name, "Failed to create container: %s", err)
 	}
 
-	_, err = r.config.Client.ContainerStart(t.Context(), cresp.ID, client.ContainerStartOptions{})
+	_, err = r.client.ContainerStart(t.Context(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
-		fatalf(t, "Failed to start container: %v", err)
+		fatalf(t, name, "Failed to start container: %v", err)
 	}
 
-	Logf(t, "", "started (%s) as %s", cname, name)
+	Logf(t, "conex", "started (%s) as %s", cname, name)
 
-	cjsonResult, err := r.config.Client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
+	cjsonResult, err := r.client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
 	if err != nil {
-		fatalf(t, "Failed to inspect: %v", err)
+		fatalf(t, name, "Failed to inspect: %v", err)
 	}
 	cjson := cjsonResult.Container
 
@@ -306,7 +307,7 @@ func (r *DockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 
 	return &dockerContainer{
 		json:    cjson,
-		client:  r.config.Client,
+		client:  r.client,
 		t:       t,
 		name:    name,
 		address: address,
@@ -358,9 +359,9 @@ func (c *dockerContainer) Drop() {
 func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
 	err := wait(c.Address(), port, timeout)
 	if err != nil && testing.Verbose() {
-		c.t.Logf("=== Container %s Logs ===", c.Name())
+		Logf(nil, "conex", "=== Container %s Logs ===\n", c.Name())
 		_ = c.Logs(os.Stdout, os.Stderr)
-		c.t.Log("=========================")
+		Logf(nil, "conex", "=========================\n")
 	}
 	return err
 }
@@ -402,20 +403,11 @@ func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []
 		return nil
 	}
 
-	var outStream io.Writer = os.Stdout
-	if os.Stdout == nil {
-		outStream = io.Discard
-	}
-	var errStream io.Writer = os.Stderr
-	if os.Stderr == nil {
-		errStream = io.Discard
-	}
-
 	c := &Cmd{
 		Path:   cmd[0],
 		Args:   cmd,
-		Stdout: outStream,
-		Stderr: errStream,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
 	}
 
 	var execID string

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sync"
 )
 
 // Cmd represents an external command being prepared or run.
@@ -28,8 +29,10 @@ type Cmd struct {
 	Stdout io.Writer
 	Stderr io.Writer
 
-	start func() error
-	wait  func() error
+	mu      sync.Mutex
+	start   func() error
+	wait    func() error
+	started bool
 }
 
 // Run starts the specified command and waits for it to complete.
@@ -42,12 +45,18 @@ func (c *Cmd) Run() error {
 
 // Start starts the specified command but does not wait for it to complete.
 func (c *Cmd) Start() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.Stdout == nil {
 		return errors.New("exec: Stdout must be set to an io.Writer")
 	}
 	if c.Stderr == nil {
 		return errors.New("exec: Stderr must be set to an io.Writer")
 	}
+	if c.started {
+		return errors.New("exec: already started")
+	}
+	c.started = true
 	if c.start != nil {
 		return c.start()
 	}
@@ -65,14 +74,17 @@ func (c *Cmd) Wait() error {
 
 // Output runs the command and returns its standard output.
 func (c *Cmd) Output() ([]byte, error) {
-	if c.Stdout != nil {
-		return nil, errors.New("conex: Stdout already set")
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return nil, errors.New("exec: already started")
 	}
 	var b bytes.Buffer
 	c.Stdout = &b
 	if c.Stderr == nil {
 		c.Stderr = io.Discard
 	}
+	c.mu.Unlock()
 	err := c.Run()
 	return b.Bytes(), err
 }
@@ -80,15 +92,15 @@ func (c *Cmd) Output() ([]byte, error) {
 // CombinedOutput runs the command and returns its combined standard
 // output and standard error.
 func (c *Cmd) CombinedOutput() ([]byte, error) {
-	if c.Stdout != nil {
-		return nil, errors.New("conex: Stdout already set")
-	}
-	if c.Stderr != nil {
-		return nil, errors.New("conex: Stderr already set")
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return nil, errors.New("exec: already started")
 	}
 	var b bytes.Buffer
 	c.Stdout = &b
 	c.Stderr = &b
+	c.mu.Unlock()
 	err := c.Run()
 	return b.Bytes(), err
 }

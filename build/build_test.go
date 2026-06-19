@@ -1,3 +1,5 @@
+//go:build !tart
+
 package build_test
 
 import (
@@ -33,7 +35,7 @@ func TestBuildBox(t *testing.T) {
 	if c.Address() == "" {
 		t.Fatal("expected container to have an address")
 	}
-	t.Logf("container address: %s", c.Address())
+	conex.Logf(t, "", "container address: %s", c.Address())
 }
 
 func TestBuildContentsExist(t *testing.T) {
@@ -47,7 +49,7 @@ func TestBuildContentsExist(t *testing.T) {
 	if !strings.Contains(out, expected) {
 		t.Fatalf("expected marker to contain %q, got %q", expected, out)
 	}
-	t.Logf("marker file: %s", strings.TrimSpace(out))
+	conex.Logf(t, "", "marker file: %s", strings.TrimSpace(out))
 }
 
 func TestPrivileged(t *testing.T) {
@@ -63,7 +65,7 @@ func TestPrivileged(t *testing.T) {
 	if !strings.Contains(out, "OK") {
 		t.Fatalf("expected privileged operation to succeed, got: %s", out)
 	}
-	t.Log("privileged mode: OK")
+	conex.Logf(t, "", "privileged mode: OK")
 }
 
 func TestNotPrivileged(t *testing.T) {
@@ -78,7 +80,7 @@ func TestNotPrivileged(t *testing.T) {
 	if !strings.Contains(out, "DENIED") {
 		t.Fatalf("expected unprivileged operation to fail, got: %s", out)
 	}
-	t.Log("unprivileged mode: correctly denied")
+	conex.Logf(t, "", "unprivileged mode: correctly denied")
 }
 
 func TestBindMount(t *testing.T) {
@@ -99,7 +101,7 @@ func TestBindMount(t *testing.T) {
 	if !strings.Contains(out, "from host") {
 		t.Fatalf("expected bind mount content, got: %s", out)
 	}
-	t.Log("bind mount: OK")
+	conex.Logf(t, "", "bind mount: OK")
 
 	// Write a file from inside the container.
 	dockerExec(t, c.ID(), "echo 'from container' > /mnt/host/container-marker.txt")
@@ -112,7 +114,7 @@ func TestBindMount(t *testing.T) {
 	if !strings.Contains(string(data), "from container") {
 		t.Fatalf("expected 'from container', got %q", string(data))
 	}
-	t.Log("bind mount write-back: OK")
+	conex.Logf(t, "", "bind mount write-back: OK")
 }
 
 func dockerExec(t *testing.T, containerID, command string) string {

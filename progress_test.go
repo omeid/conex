@@ -241,7 +241,7 @@ func TestPrintBuildProgress(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		expected := "    Step 1/3 : FROM alpine\n     ---> d9e853e87e55\n"
+		expected := "        Step 1/3 : FROM alpine\n         ---> d9e853e87e55\n"
 		if buf.String() != expected {
 			t.Errorf("expected %q, got %q", expected, buf.String())
 		}
@@ -259,7 +259,7 @@ func TestPrintBuildProgress(t *testing.T) {
 		if err.Error() != "manifest not found" {
 			t.Errorf("expected 'manifest not found', got %v", err)
 		}
-		if buf.String() != "    Step 1/3 : FROM alpine\n" {
+		if buf.String() != "        Step 1/3 : FROM alpine\n" {
 			t.Errorf("expected partial stream output, got %q", buf.String())
 		}
 	})

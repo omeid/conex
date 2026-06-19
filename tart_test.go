@@ -3,7 +3,6 @@
 package conex_test
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -11,46 +10,45 @@ import (
 )
 
 var (
-	tartMacImage   = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+	basicImage     = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
 	tartLinuxImage = "ghcr.io/cirruslabs/ubuntu:latest"
 )
 
 func init() {
-	conex.Require(func() string { return tartMacImage })
+	conex.Require(func() string { return basicImage })
 	conex.Require(func() string { return tartLinuxImage })
-	os.Setenv("CONEX_RUNNER", "tart")
 }
 
 func TestMain(m *testing.M) {
-	conex.Main(m)
+	conex.Main(m, conex.OptRunnerType(conex.RunnerTart))
 }
 
 // --- macOS VM tests ---
 
 func TestTartMacBox(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
-		Image: tartMacImage,
+		Image: basicImage,
 	})
 	defer c.Drop()
 
 	if c.Address() == "" {
 		t.Fatal("expected VM to have an IP address")
 	}
-	t.Logf("VM address: %s", c.Address())
+	conex.Logf(t, "", "VM address: %s", c.Address())
 }
 
 func TestTartMacExec(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
-		Image: tartMacImage,
+		Image: basicImage,
 	})
 	defer c.Drop()
 
-	t.Logf("VM %s running at %s", c.Name(), c.Address())
+	conex.Logf(t, "", "VM %s running at %s", c.Name(), c.Address())
 }
 
 func TestTartMacWait(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
-		Image: tartMacImage,
+		Image: basicImage,
 	})
 	defer c.Drop()
 
@@ -58,7 +56,7 @@ func TestTartMacWait(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SSH port not ready: %v", err)
 	}
-	t.Log("SSH port is accepting connections")
+	conex.Logf(t, "", "SSH port is accepting connections")
 }
 
 // --- Linux VM tests ---
@@ -72,7 +70,7 @@ func TestTartLinuxBox(t *testing.T) {
 	if c.Address() == "" {
 		t.Fatal("expected VM to have an IP address")
 	}
-	t.Logf("VM address: %s", c.Address())
+	conex.Logf(t, "", "VM address: %s", c.Address())
 }
 
 func TestTartLinuxExec(t *testing.T) {
@@ -81,7 +79,7 @@ func TestTartLinuxExec(t *testing.T) {
 	})
 	defer c.Drop()
 
-	t.Logf("VM %s running at %s", c.Name(), c.Address())
+	conex.Logf(t, "", "VM %s running at %s", c.Name(), c.Address())
 }
 
 func TestTartLinuxWait(t *testing.T) {
@@ -94,5 +92,5 @@ func TestTartLinuxWait(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SSH port not ready: %v", err)
 	}
-	t.Log("SSH port is accepting connections")
+	conex.Logf(t, "", "SSH port is accepting connections")
 }

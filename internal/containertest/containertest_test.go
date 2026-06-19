@@ -1,3 +1,5 @@
+//go:build !tart
+
 package containertest_test
 
 import (
@@ -16,6 +18,7 @@ func TestMain(m *testing.M) {
 		m,
 		conex.OptRequireImage(testImage),
 		conex.OptRunnerType(conex.RunnerDocker), // Force container runtime
+		conex.OptGoImage("golang:latest"),
 	)
 }
 

@@ -33,10 +33,10 @@ var (
 	// GoImage is the Docker image used to run tests inside a container when
 	// using the Docker runner. This should be a Go image that matches your
 	// Go version. Set this before calling Run() if you need a specific version.
-	// Example: "golang:1.21-alpine"
+	// Example: "golang:alpine"
 	//
 	// Deprecated: Use OptGoImage instead.
-	GoImage = "golang:1.22"
+	GoImage = "golang:alpine"
 )
 
 // Require adds the image name returned by the provided functions

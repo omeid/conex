@@ -1,3 +1,5 @@
+//go:build !tart
+
 package buildimage_test
 
 import (
@@ -13,6 +15,7 @@ func TestMain(m *testing.M) {
 		m,
 		conex.OptRequireImage(buildImage),
 		conex.OptRunnerType(conex.RunnerDocker), // Explicit runner
+		conex.OptGoImage("golang:latest"),
 	)
 }
 
@@ -25,5 +28,5 @@ func TestBuildImageInContainer(t *testing.T) {
 	if c.Address() == "" {
 		t.Fatal("expected container to have an address")
 	}
-	t.Logf("container address: %s", c.Address())
+	conex.Logf(t, "", "container address: %s", c.Address())
 }

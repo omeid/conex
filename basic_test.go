@@ -9,13 +9,18 @@ import (
 	"github.com/omeid/conex"
 )
 
-const basicImage = "alpine"
-
 func TestMain(m *testing.M) {
 	conex.Main(
 		m,
 		conex.OptRequireImage(basicImage),
 	)
+}
+
+func TestBasic(t *testing.T) {
+	c := conex.Box(t, &conex.Config{
+		Image: basicImage,
+	})
+	c.Drop()
 }
 
 func TestBasicMulti(t *testing.T) {

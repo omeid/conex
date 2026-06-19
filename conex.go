@@ -2,29 +2,10 @@
 package conex
 
 import (
-	"fmt"
 	"io"
 	"testing"
 	"time"
 )
-
-// Logf logs directly to stdout to avoid the test file and line number prefix,
-// providing a cleaner output format. It can be used by plugins to log uniformly.
-func Logf(t testing.TB, plugin string, f string, args ...any) {
-	if len(f) > 0 && f[0] >= 'a' && f[0] <= 'z' {
-		f = string(f[0]-32) + f[1:]
-	}
-	if plugin != "" {
-		fmt.Printf("    conex: "+plugin+": "+f+"\n", args...)
-	} else {
-		fmt.Printf("    conex: "+f+"\n", args...)
-	}
-}
-
-// Same story as above.
-func fatalf(t testing.TB, f string, args ...any) {
-	t.Fatalf(f, args...)
-}
 
 // Manager is the conex container manager.
 type Manager interface {

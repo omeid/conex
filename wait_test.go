@@ -1,19 +1,21 @@
-package conex
+package conex_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/omeid/conex"
 )
 
 func init() {
-	Require(func() string { return "alpine:3.20" })
+	conex.Require(func() string { return basicImage })
 }
 
 func TestWaitAndLogs(t *testing.T) {
-	c := Box(t, &Config{
-		Image: "alpine:3.20",
+	c := conex.Box(t, &conex.Config{
+		Image: basicImage,
 		Cmd:   []string{"sh", "-c", "echo 'hello conex logs' && echo 'hello conex error' >&2 && sleep 10"},
 	})
 

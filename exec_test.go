@@ -1,11 +1,8 @@
-//go:build !tart
-
 package conex_test
 
 import (
 	"bytes"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -16,7 +13,7 @@ func TestExecCat(t *testing.T) {
 	t.Parallel()
 
 	conf := &conex.Config{
-		Image: "alpine",
+		Image: basicImage,
 		Cmd:   []string{"sleep", "1000"}, // Keep the container running
 	}
 
@@ -58,7 +55,7 @@ func TestExecNullIO(t *testing.T) {
 	t.Parallel()
 
 	conf := &conex.Config{
-		Image: "alpine",
+		Image: basicImage,
 		Cmd:   []string{"sleep", "1000"}, // Keep the container running
 	}
 
@@ -92,28 +89,19 @@ func TestExecNullIO(t *testing.T) {
 
 func TestExecDefaultsToDiscard(t *testing.T) {
 	conf := &conex.Config{
-		Image: "alpine",
+		Image: basicImage,
 		Cmd:   []string{"sleep", "1000"},
 	}
 
 	c := conex.Box(t, conf)
 	defer c.Drop()
 
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-
-	os.Stdout = nil
-	os.Stderr = nil
-
 	cmd := c.Exec("echo", "hello")
 
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
 	if cmd.Stdout != io.Discard {
-		t.Fatalf("Expected cmd.Stdout to be io.Discard when os.Stdout is nil")
+		t.Fatalf("Expected cmd.Stdout to be io.Discard by default")
 	}
 	if cmd.Stderr != io.Discard {
-		t.Fatalf("Expected cmd.Stderr to be io.Discard when os.Stderr is nil")
+		t.Fatalf("Expected cmd.Stderr to be io.Discard by default")
 	}
 }
