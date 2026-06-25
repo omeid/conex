@@ -1,4 +1,4 @@
-//go:build tart
+//go:build vm
 
 package vm
 
@@ -14,12 +14,12 @@ import (
 // This is the core of the locked-keychain fix: without it, a process
 // that dies on start (e.g. keychain locked) would cause a 120 s timeout
 // with a misleading "timeout waiting for IP" error.
-func TestTartIPWaitProcessExit(t *testing.T) {
+func TestVMIPWaitProcessExit(t *testing.T) {
 	exited := make(chan error, 1)
 	exited <- errors.New("exit status 1")
 
 	start := time.Now()
-	_, err := tartIPWait("test-vm", 30*time.Second, exited)
+	_, err := vmIPWait("test-vm", 30*time.Second, exited)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -38,12 +38,12 @@ func TestTartIPWaitProcessExit(t *testing.T) {
 
 // TestTartIPWaitTimeout verifies the timeout path still works when the
 // process stays alive but no IP is ever assigned.
-func TestTartIPWaitTimeout(t *testing.T) {
+func TestVMIPWaitTimeout(t *testing.T) {
 	// Channel that never receives — simulates a running process.
 	exited := make(chan error, 1)
 
 	start := time.Now()
-	_, err := tartIPWait("nonexistent-vm", 3*time.Second, exited)
+	_, err := vmIPWait("nonexistent-vm", 3*time.Second, exited)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -61,7 +61,7 @@ func TestTartIPWaitTimeout(t *testing.T) {
 
 // TestTartIPWaitProcessExitDuringPoll verifies that if the process dies
 // mid-poll (not pre-filled), tartIPWait still detects it promptly.
-func TestTartIPWaitProcessExitDuringPoll(t *testing.T) {
+func TestVMIPWaitProcessExitDuringPoll(t *testing.T) {
 	exited := make(chan error, 1)
 
 	// Simulate a process that dies after 1 second.
@@ -71,7 +71,7 @@ func TestTartIPWaitProcessExitDuringPoll(t *testing.T) {
 	}()
 
 	start := time.Now()
-	_, err := tartIPWait("test-vm", 30*time.Second, exited)
+	_, err := vmIPWait("test-vm", 30*time.Second, exited)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -88,7 +88,7 @@ func TestTartIPWaitProcessExitDuringPoll(t *testing.T) {
 	}
 }
 
-func TestSanitizeTartName(t *testing.T) {
+func TestSanitizeVMName(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
@@ -101,7 +101,7 @@ func TestSanitizeTartName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := sanitizeTartName(tt.input)
+		got := sanitizeVMName(tt.input)
 		if got != tt.want {
 			t.Errorf("sanitizeTartName(%q) = %q, want %q", tt.input, got, tt.want)
 		}

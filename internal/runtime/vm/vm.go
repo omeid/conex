@@ -17,15 +17,17 @@ import (
 	"github.com/omeid/conex/runtime"
 )
 
+var vmCommand = "tart"
+
 func init() {
-	var _ iruntime.Runtime = (*tartRuntime)(nil)
-	var _ runtime.Container = (*tartContainer)(nil)
+	var _ iruntime.Runtime = (*vmRuntime)(nil)
+	var _ runtime.Container = (*vmContainer)(nil)
 }
 
 // tartRuntime runs tests on the host machine and manages Tart VMs
 // as containers. VMs are cloned from base images and accessed via
 // their direct IP addresses.
-type tartRuntime struct {
+type vmRuntime struct {
 	config  *iruntime.Config
 	counter iruntime.Counter
 }
@@ -55,8 +57,8 @@ func (pw *prefixWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (r *tartRuntime) Pull(ctx context.Context, image string) error {
-	cmd := exec.CommandContext(ctx, "tart", "pull", image)
+func (r *vmRuntime) Pull(ctx context.Context, image string) error {
+	cmd := exec.CommandContext(ctx, vmCommand, "pull", image)
 	pw := &prefixWriter{
 		w:       os.Stdout,
 		prefix:  []byte("        "),
@@ -71,31 +73,31 @@ func (r *tartRuntime) Pull(ctx context.Context, image string) error {
 	return nil
 }
 
-func (r *tartRuntime) Ensure(ctx context.Context, image string) (string, error) {
+func (r *vmRuntime) Ensure(ctx context.Context, image string) (string, error) {
 	return "", nil
 }
 
-func (r *tartRuntime) Build(ctx context.Context, image string, tag string) error {
+func (r *vmRuntime) Build(ctx context.Context, image string, tag string) error {
 	return fmt.Errorf("tart runtime does not support Dockerfile image refs: %s", image)
 }
 
 // NewTartRuntime creates a new runtime that runs tests in Tart VMs.
-func NewTartRuntime(config *iruntime.Config) iruntime.Runtime {
-	return &tartRuntime{
+func NewVMRuntime(config *iruntime.Config) iruntime.Runtime {
+	return &vmRuntime{
 		config:  config,
 		counter: iruntime.NewCounter(),
 	}
 }
 
 // Run executes the tests directly on the host.
-func (r *tartRuntime) Run(m *testing.M) int {
+func (r *vmRuntime) Run(m *testing.M) int {
 	return m.Run()
 }
 
 // Box clones a Tart VM from the given image and starts it.
 // The Config.Image field specifies the Tart VM image to clone from.
 // Cmd, Env, and Expose are supported through tart exec after boot.
-func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runtime.Container {
+func (r *vmRuntime) Box(t testing.TB, conf *runtime.Config, name string) runtime.Container {
 	if len(conf.Binds) > 0 {
 		log.Fatalf(t, "", "tart runtime does not support Binds (volume mounts)")
 	}
@@ -106,13 +108,13 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 	}
 
 	// Sanitize the name for tart (only alphanumeric, hyphens, underscores, dots)
-	vmName := sanitizeTartName(name)
+	vmName := sanitizeVMName(name)
 	vmName = fmt.Sprintf("%s_%d", vmName, r.counter.Count(vmName))
 
 	log.Logf(t, "conex", "creating (%s) as %s", cname, vmName)
 
 	// Clone from base image.
-	if _, err := tartCmd("clone", conf.Image, vmName); err != nil {
+	if _, err := vmCmd("clone", conf.Image, vmName); err != nil {
 		log.Fatalf(t, vmName, "Failed to clone Tart image %s: %s", conf.Image, err)
 	}
 
@@ -120,11 +122,11 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 	// failures that happen after the process is spawned (e.g.
 	// locked keychain, permission errors).
 	logs := new(safeBuffer)
-	cmd := exec.Command("tart", "run", "--no-graphics", vmName)
+	cmd := exec.Command(vmCommand, "run", "--no-graphics", vmName)
 	cmd.Stdout = logs
 	cmd.Stderr = logs
 	if err := cmd.Start(); err != nil {
-		if _, deleteErr := tartCmd("delete", vmName); deleteErr != nil {
+		if _, deleteErr := vmCmd("delete", vmName); deleteErr != nil {
 			log.Fatalf(t, vmName, "Failed to delete VM after start failure: %s", deleteErr)
 		}
 		log.Fatalf(t, vmName, "Failed to start VM: %s", err)
@@ -152,7 +154,7 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 	log.Logf(t, "conex", "started (%s) as %s", cname, vmName)
 
 	// Wait for VM to get an IP, aborting early if the process exits.
-	ip, err := tartIPWait(vmName, 120*time.Second, exited)
+	ip, err := vmIPWait(vmName, 120*time.Second, exited)
 	if err != nil {
 		// If the error is from a timeout (process still running), kill it.
 		// If the process already exited, Kill is harmless.
@@ -164,7 +166,7 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 		case <-exited:
 		case <-time.After(5 * time.Second):
 		}
-		if _, deleteErr := tartCmd("delete", vmName); deleteErr != nil {
+		if _, deleteErr := vmCmd("delete", vmName); deleteErr != nil {
 			log.Fatalf(t, vmName, "Failed to delete VM after IP wait failure: %s", deleteErr)
 		}
 		log.Fatalf(t, vmName, "VM failed to get IP: %s: %s", err, logs.String())
@@ -172,7 +174,7 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 
 	log.Logf(t, "conex", "VM %s has IP %s", vmName, ip)
 
-	c := &tartContainer{
+	c := &vmContainer{
 		vmName: vmName,
 		image:  conf.Image,
 		ip:     ip,
@@ -185,7 +187,7 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 	// Run startup command if provided.
 	if len(conf.Cmd) > 0 {
 		cmdStr := strings.Join(conf.Cmd, " ")
-		if _, err := tartExec(vmName, cmdStr); err != nil {
+		if _, err := vmExec(vmName, cmdStr); err != nil {
 			c.Drop()
 			log.Fatalf(t, c.vmName, "Failed to run startup command: %s", err)
 		}
@@ -195,7 +197,7 @@ func (r *tartRuntime) Box(t testing.TB, conf *runtime.Config, name string) runti
 }
 
 // tartContainer implements Container for Tart VMs.
-type tartContainer struct {
+type vmContainer struct {
 	vmName   string
 	image    string
 	ip       string
@@ -206,26 +208,26 @@ type tartContainer struct {
 	logs     *safeBuffer
 }
 
-func (c *tartContainer) ID() string {
+func (c *vmContainer) ID() string {
 	return c.vmName
 }
 
-func (c *tartContainer) Image() string {
+func (c *vmContainer) Image() string {
 	return c.image
 }
 
-func (c *tartContainer) Name() string {
+func (c *vmContainer) Name() string {
 	return c.vmName
 }
 
-func (c *tartContainer) Address() string {
+func (c *vmContainer) Address() string {
 	return c.ip
 }
 
-func (c *tartContainer) Drop() {
+func (c *vmContainer) Drop() {
 	c.dropOnce.Do(func() {
 		// Stop the VM.
-		if _, err := tartCmd("stop", c.vmName); err != nil {
+		if _, err := vmCmd("stop", c.vmName); err != nil {
 			c.t.Fatalf("Failed to stop VM: %s", err)
 		}
 		if c.exited != nil {
@@ -234,14 +236,14 @@ func (c *tartContainer) Drop() {
 		}
 
 		// Delete the VM.
-		if _, err := tartCmd("delete", c.vmName); err != nil {
+		if _, err := vmCmd("delete", c.vmName); err != nil {
 			c.t.Fatalf("Failed to delete VM: %s", err)
 		}
 	})
 }
 
 // Wait pings the given port until it responds or timeout occurs.
-func (c *tartContainer) Wait(port string, timeout time.Duration) error {
+func (c *vmContainer) Wait(port string, timeout time.Duration) error {
 	err := iruntime.Wait(c.ip, port, timeout)
 	if err != nil && testing.Verbose() {
 		log.Logf(nil, "conex", "=== Container %s Logs ===\n", c.Name())
@@ -251,7 +253,7 @@ func (c *tartContainer) Wait(port string, timeout time.Duration) error {
 	return err
 }
 
-func (c *tartContainer) Logs(stdout io.Writer, stderr io.Writer) error {
+func (c *vmContainer) Logs(stdout io.Writer, stderr io.Writer) error {
 	b := c.logs.Bytes()
 	if stdout != nil {
 		if _, err := stdout.Write(b); err != nil {
@@ -265,7 +267,7 @@ func (c *tartContainer) Logs(stdout io.Writer, stderr io.Writer) error {
 	return nil
 }
 
-func (c *tartContainer) Exec(cmd ...string) *runtime.Cmd {
+func (c *vmContainer) Exec(cmd ...string) *runtime.Cmd {
 	if len(cmd) == 0 {
 		return nil
 	}
@@ -297,9 +299,9 @@ func (c *tartContainer) Exec(cmd ...string) *runtime.Cmd {
 	return runtime.WireCommand(cmdObj, start, wait)
 }
 
-// tartCmd runs a tart command and returns its combined output.
-func tartCmd(args ...string) (string, error) {
-	cmd := exec.Command("tart", args...)
+// vmCmd runs a vm command and returns its combined output.
+func vmCmd(args ...string) (string, error) {
+	cmd := exec.Command(vmCommand, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -310,14 +312,14 @@ func tartCmd(args ...string) (string, error) {
 }
 
 // tartExec runs a command inside a Tart VM.
-func tartExec(vmName, cmd string) (string, error) {
-	return tartCmd("exec", vmName, "sh", "-c", cmd)
+func vmExec(vmName, cmd string) (string, error) {
+	return vmCmd("exec", vmName, "sh", "-c", cmd)
 }
 
 // tartIPWait waits for a Tart VM to get an IP address.
 // If exited is non-nil it is checked on every tick; a value means the VM
 // process died and there is no point waiting further.
-func tartIPWait(vmName string, timeout time.Duration, exited <-chan error) (string, error) {
+func vmIPWait(vmName string, timeout time.Duration, exited <-chan error) (string, error) {
 	deadline := time.After(timeout)
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -329,7 +331,7 @@ func tartIPWait(vmName string, timeout time.Duration, exited <-chan error) (stri
 		case <-deadline:
 			return "", fmt.Errorf("timeout waiting for VM %s IP", vmName)
 		case <-tick.C:
-			out, err := tartCmd("ip", vmName)
+			out, err := vmCmd("ip", vmName)
 			if err == nil {
 				ip := strings.TrimSpace(out)
 				if ip != "" {
@@ -341,7 +343,7 @@ func tartIPWait(vmName string, timeout time.Duration, exited <-chan error) (stri
 }
 
 // sanitizeTartName ensures the VM name is valid for Tart.
-func sanitizeTartName(name string) string {
+func sanitizeVMName(name string) string {
 	r := strings.NewReplacer("/", "-", " ", "-", ":", "-")
 	return r.Replace(name)
 }

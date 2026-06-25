@@ -31,9 +31,9 @@ const (
 	// (e.g., Docker for Mac, Docker Machine).
 	RuntimeDocker RuntimeType = "docker"
 
-	// RuntimeTart runs VMs using Tart virtualization.
+	// RuntimeVM runs VMs using VM virtualization.
 	// Container IPs are directly accessible from the host.
-	RuntimeTart RuntimeType = "tart"
+	RuntimeVM RuntimeType = "vm"
 )
 
 type managerConfig struct {
@@ -144,7 +144,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	mn.conf.images = allImages
 
-	if mn.conf.runtime != RuntimeTart {
+	if mn.conf.runtime != RuntimeVM {
 		mn.client, err = client.New(client.FromEnv)
 		if err != nil {
 			log.Logf(nil, "conex", "error: %v", err)
@@ -170,8 +170,8 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	// Create the appropriate runtime
 	switch mn.conf.runtime {
-	case RuntimeTart:
-		mn.rt = vm.NewTartRuntime(config)
+	case RuntimeVM:
+		mn.rt = vm.NewVMRuntime(config)
 	case RuntimeDocker:
 		mn.rt = docker.NewDockerRuntime(mn.client, config)
 	default:
@@ -205,7 +205,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	ret := mn.rt.Run(m)
 
-	if mn.conf.runtime != RuntimeTart {
+	if mn.conf.runtime != RuntimeVM {
 		err = mn.cleanup()
 		if err != nil {
 			log.Logf(nil, "conex", "cleanup error: %v", err)

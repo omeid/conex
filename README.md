@@ -1,6 +1,6 @@
 # Conex [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/omeid/conex) [![Go Report Card](https://goreportcard.com/badge/github.com/omeid/conex)](https://goreportcard.com/report/github.com/omeid/conex)
 
-Conex integrates Go `testing` with Docker (and Tart, experimentally) so integration tests can start real dependencies with less boilerplate.
+Conex integrates Go `testing` with Docker (and VM, experimentally) so integration tests can start real dependencies with less boilerplate.
 
 ## Why?
 
@@ -142,15 +142,15 @@ func TestMain(m *testing.M) {
 }
 ```
 
-### Tart Runtime (Experimental)
+### VM Runtime (Experimental)
 
-The Tart runtime creates macOS/Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs.
+The VM runtime creates macOS/Linux VMs using [VM](https://github.com/cirruslabs/tart) on Apple Silicon Macs.
 
 ```bash
-CONEX_RUNTIME=tart go test ./...
+CONEX_RUNTIME=vm go test ./...
 ```
 
-Tart image references should be Tart VM images (for example, `ghcr.io/cirruslabs/macos-sequoia-base:latest`). Dockerfile image refs are not supported with the Tart runtime.
+VM image references should be VM images (for example, `ghcr.io/cirruslabs/macos-sequoia-base:latest`). Dockerfile image refs are not supported with the VM runtime.
 
 ### Overriding Auto-Detection
 

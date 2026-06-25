@@ -1,4 +1,4 @@
-//go:build !tart
+//go:build !vm
 
 package buildimage_test
 

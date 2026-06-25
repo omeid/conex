@@ -20,7 +20,7 @@ func TestOptRuntimeType(t *testing.T) {
 	}
 
 	// Test setting runtime to RuntimeTart
-	m3 := conex.New(conex.OptRuntimeType(conex.RuntimeTart))
+	m3 := conex.New(conex.OptRuntimeType(conex.RuntimeVM))
 	if m3 == nil {
 		t.Fatalf("Expected manager to not be nil")
 	}

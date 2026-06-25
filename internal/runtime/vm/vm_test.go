@@ -1,4 +1,4 @@
-//go:build tart
+//go:build vm
 
 package vm_test
 
@@ -11,22 +11,22 @@ import (
 )
 
 var (
-	basicImage     = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
-	tartLinuxImage = "ghcr.io/cirruslabs/ubuntu:latest"
+	basicImage   = "ghcr.io/cirruslabs/macos-sequoia-base:latest"
+	vmLinuxImage = "ghcr.io/cirruslabs/ubuntu:latest"
 )
 
 func init() {
 	conex.Require(func() string { return basicImage })
-	conex.Require(func() string { return tartLinuxImage })
+	conex.Require(func() string { return vmLinuxImage })
 }
 
 func TestMain(m *testing.M) {
-	conex.Main(m, conex.OptRuntimeType(conex.RuntimeTart))
+	conex.Main(m, conex.OptRuntimeType(conex.RuntimeVM))
 }
 
 // --- macOS VM tests ---
 
-func TestTartMacBox(t *testing.T) {
+func TestVMMacBox(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
 		Image: basicImage,
 	})
@@ -38,7 +38,7 @@ func TestTartMacBox(t *testing.T) {
 	conex.Logf(t, "", "VM address: %s", c.Address())
 }
 
-func TestTartMacExec(t *testing.T) {
+func TestVMMacExec(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
 		Image: basicImage,
 	})
@@ -47,7 +47,7 @@ func TestTartMacExec(t *testing.T) {
 	conex.Logf(t, "", "VM %s running at %s", c.Name(), c.Address())
 }
 
-func TestTartMacWait(t *testing.T) {
+func TestVMMacWait(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
 		Image: basicImage,
 	})
@@ -62,9 +62,9 @@ func TestTartMacWait(t *testing.T) {
 
 // --- Linux VM tests ---
 
-func TestTartLinuxBox(t *testing.T) {
+func TestVMLinuxBox(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
-		Image: tartLinuxImage,
+		Image: vmLinuxImage,
 	})
 	defer c.Drop()
 
@@ -74,18 +74,18 @@ func TestTartLinuxBox(t *testing.T) {
 	conex.Logf(t, "", "VM address: %s", c.Address())
 }
 
-func TestTartLinuxExec(t *testing.T) {
+func TestVMLinuxExec(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
-		Image: tartLinuxImage,
+		Image: vmLinuxImage,
 	})
 	defer c.Drop()
 
 	conex.Logf(t, "", "VM %s running at %s", c.Name(), c.Address())
 }
 
-func TestTartLinuxWait(t *testing.T) {
+func TestVMLinuxWait(t *testing.T) {
 	c := conex.Box(t, &conex.Config{
-		Image: tartLinuxImage,
+		Image: vmLinuxImage,
 	})
 	defer c.Drop()
 
