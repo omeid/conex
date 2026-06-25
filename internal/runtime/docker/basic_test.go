@@ -1,6 +1,4 @@
-//go:build !tart
-
-package conex_test
+package docker_test
 
 import (
 	"strings"
@@ -12,7 +10,9 @@ import (
 func TestMain(m *testing.M) {
 	conex.Main(
 		m,
+		conex.OptRuntimeType(conex.RuntimeDocker),
 		conex.OptRequireImage(basicImage),
+		conex.OptGoImage("golang:latest"),
 	)
 }
 

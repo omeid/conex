@@ -17,13 +17,13 @@ func TestMain(m *testing.M) {
 	conex.Main(
 		m,
 		conex.OptRequireImage(testImage),
-		conex.OptRunnerType(conex.RunnerDocker), // Force container runtime
+		conex.OptRuntimeType(conex.RuntimeDocker),
 		conex.OptGoImage("golang:latest"),
 	)
 }
 
 func TestConexInsideContainer(t *testing.T) {
-	// 1. Verify we are indeed running inside the container runner
+	// 1. Verify we are indeed running inside the container runtime
 	if os.Getenv("CONEX_INSIDE_DOCKER") != "1" {
 		t.Fatal("Expected CONEX_INSIDE_DOCKER to be '1'")
 	}

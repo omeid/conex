@@ -1,4 +1,4 @@
-package conex_test
+package docker_test
 
 import (
 	"bytes"

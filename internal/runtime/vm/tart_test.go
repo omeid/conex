@@ -1,12 +1,13 @@
 //go:build tart
 
-package conex_test
+package vm_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/omeid/conex"
+	"github.com/omeid/conex/runtime"
 )
 
 var (
@@ -20,7 +21,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	conex.Main(m, conex.OptRunnerType(conex.RunnerTart))
+	conex.Main(m, conex.OptRuntimeType(conex.RuntimeTart))
 }
 
 // --- macOS VM tests ---

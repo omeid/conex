@@ -2,8 +2,9 @@ package conex
 
 import (
 	"os"
-	"runtime"
 	"testing"
+
+	"github.com/omeid/conex/internal/runtime/docker"
 )
 
 var std Manager
@@ -31,7 +32,7 @@ var (
 	BuildImages = true
 
 	// GoImage is the Docker image used to run tests inside a container when
-	// using the Docker runner. This should be a Go image that matches your
+	// using the Docker runtime. This should be a Go image that matches your
 	// Go version. Set this before calling Run() if you need a specific version.
 	// Example: "golang:alpine"
 	//
@@ -46,33 +47,30 @@ func Require(images ...func() string) {
 	requiredImages = append(requiredImages, images...)
 }
 
-// detectRunner determines the appropriate runner based on the environment.
-// It returns RunnerNative if we're on Linux with a local Docker socket,
-// otherwise RunnerDocker for environments like Docker for Mac where
-// container IPs are not directly accessible.
-func detectRunner() RunnerType {
+// detectRuntime tries to automatically select the best runtime for the current environment.
+func detectRuntime() RuntimeType {
 	// Allow explicit override via environment variable
-	if envRunner := os.Getenv("CONEX_RUNNER"); envRunner != "" {
-		return RunnerType(envRunner)
+	if envRuntime := os.Getenv("CONEX_RUNTIME"); envRuntime != "" {
+		return RuntimeType(envRuntime)
 	}
 
-	// If we're already inside a Docker container, use the docker runner
-	if os.Getenv(ConexRunnerEnv) == "1" {
-		return RunnerDocker
+	// If we're already inside a Docker container, use the docker runtime
+	if os.Getenv(docker.ConexRuntimeEnv) == "1" {
+		return RuntimeDocker
 	}
 
 	// On Linux with a local Docker socket, container IPs are directly accessible
-	if runtime.GOOS == "linux" {
+	if linux {
 		// Check if DOCKER_HOST is set to something non-local
 		dockerHost := os.Getenv("DOCKER_HOST")
 		if dockerHost == "" || dockerHost == "unix:///var/run/docker.sock" {
-			return RunnerNative
+			return RuntimeNative
 		}
 	}
 
-	// For macOS, Windows, or remote Docker hosts, use the docker runner
+	// For macOS, Windows, or remote Docker hosts, use the docker runtime
 	// since container IPs won't be directly accessible
-	return RunnerDocker
+	return RuntimeDocker
 }
 
 // Run prepares a docker client, pulls the provided list of images
@@ -80,11 +78,11 @@ func detectRunner() RunnerType {
 func Run(m *testing.M, opts ...Option) int {
 	images := requiredImageRefs()
 
-	runnerType := detectRunner()
+	runtimeType := detectRuntime()
 
 	// Default config
 	conf := &managerConfig{
-		runner:      runnerType,
+		runtime:     runtimeType,
 		images:      images,
 		retcode:     FailReturnCode,
 		pullImages:  PullImages,

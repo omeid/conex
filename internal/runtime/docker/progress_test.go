@@ -1,4 +1,4 @@
-package conex
+package docker
 
 import (
 	"bytes"

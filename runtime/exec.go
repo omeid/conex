@@ -1,4 +1,4 @@
-package conex
+package runtime
 
 import (
 	"bytes"
@@ -103,4 +103,11 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 	c.mu.Unlock()
 	err := c.Run()
 	return b.Bytes(), err
+}
+
+// WireCommand is for internal use.
+func WireCommand(c *Cmd, start func() error, wait func() error) *Cmd {
+	c.start = start
+	c.wait = wait
+	return c
 }

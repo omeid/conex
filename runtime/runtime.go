@@ -1,17 +1,9 @@
-// Package conex provides easy to use Docker Integration with Testing.
-package conex
+package runtime
 
 import (
 	"io"
-	"testing"
 	"time"
 )
-
-// Manager is the conex container manager.
-type Manager interface {
-	Run(m *testing.M, images ...string) int
-	Box(t testing.TB, config *Config) Container
-}
 
 // Container is a simple interface to a docker
 // container.

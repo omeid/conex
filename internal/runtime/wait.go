@@ -1,4 +1,4 @@
-package conex
+package runtime
 
 import (
 	"errors"
@@ -12,16 +12,18 @@ import (
 // port accepts connections.
 var ErrPortWaitTimedOut = errors.New("wait timeout")
 
-func wait(host string, port string, maxWait time.Duration) error {
+// Wait blocks until a connection can be established to the specified ip and port,
+// or the timeout is reached.
+func Wait(ip string, port string, duration time.Duration) error {
 
 	portset := nat.Port(port)
 
-	timeout := time.After(maxWait)
+	timeout := time.After(duration)
 	tick := time.NewTicker(time.Second)
 
 	defer tick.Stop()
 
-	addr := net.JoinHostPort(host, portset.Port())
+	addr := net.JoinHostPort(ip, portset.Port())
 	for {
 
 		select {

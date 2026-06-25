@@ -14,7 +14,7 @@ func TestMain(m *testing.M) {
 	conex.Main(
 		m,
 		conex.OptRequireImage(buildImage),
-		conex.OptRunnerType(conex.RunnerDocker), // Explicit runner
+		conex.OptRuntimeType(conex.RuntimeDocker),
 		conex.OptGoImage("golang:latest"),
 	)
 }

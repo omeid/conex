@@ -1,17 +1,27 @@
-package conex
+package runtime
 
 import (
 	"sync"
 )
 
+type Counter interface {
+	Count(hash string) int
+}
+
+func NewCounter() Counter {
+	return &counter{
+		seqs: map[string]int{},
+	}
+}
+
 type counter struct {
+	sync.Mutex
 	seqs map[string]int
-	lock sync.Mutex
 }
 
 func (s *counter) Count(hash string) int {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
 	count, ok := s.seqs[hash]
 	if !ok {

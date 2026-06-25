@@ -5,37 +5,40 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 	"strings"
 	"testing"
-	"time"
 
-	units "github.com/docker/go-units"
-	"github.com/moby/go-archive"
 	"github.com/moby/moby/client"
-	"github.com/moby/moby/client/pkg/stringid"
+
+	iruntime "github.com/omeid/conex/internal/runtime"
+	"github.com/omeid/conex/internal/runtime/docker"
+	"github.com/omeid/conex/internal/runtime/vm"
+	"github.com/omeid/conex/log"
+	"github.com/omeid/conex/runtime"
 )
 
-// runnerType specifies which runner implementation to use.
-type RunnerType string
+// RuntimeType specifies which runtime implementation to use.
+type RuntimeType string
 
 const (
-	// RunnerNative runs tests on the host with direct container IP access.
+	// RuntimeNative runs tests on the host with direct container IP access.
 	// This is the default and requires native Docker.
-	RunnerNative RunnerType = "native"
+	RuntimeNative RuntimeType = "native"
 
-	// RunnerDocker runs containers on a shared network, allowing tests to
+	// RuntimeDocker runs containers on a shared network, allowing tests to
 	// work on systems where container IPs are not accessible from the host
 	// (e.g., Docker for Mac, Docker Machine).
-	RunnerDocker RunnerType = "docker"
+	RuntimeDocker RuntimeType = "docker"
 
-	// RunnerTart runs VMs using Tart virtualization.
+	// RuntimeTart runs VMs using Tart virtualization.
 	// Container IPs are directly accessible from the host.
-	RunnerTart RunnerType = "tart"
+	RuntimeTart RuntimeType = "tart"
 )
 
 type managerConfig struct {
 	name        string
-	runner      RunnerType
+	runtime     RuntimeType
 	retcode     int
 	pullImages  bool
 	buildImages bool
@@ -65,16 +68,16 @@ func OptRequireImage(image string) Option {
 	return func(conf *managerConfig) { conf.images = append(conf.images, image) }
 }
 
-// OptRunnerType allows setting the RunnerType explicitly.
-func OptRunnerType(runner RunnerType) Option {
-	return func(conf *managerConfig) { conf.runner = runner }
+// OptRuntimeType allows setting the RuntimeType explicitly.
+func OptRuntimeType(runtimeType RuntimeType) Option {
+	return func(conf *managerConfig) { conf.runtime = runtimeType }
 }
 
 // New creates a new conex manager with the given options.
 // Options take precedence over package-level defaults.
 func New(options ...Option) Manager {
 	conf := &managerConfig{
-		runner:      RunnerNative,
+		runtime:     RuntimeNative,
 		pullImages:  PullImages,
 		buildImages: BuildImages,
 		retcode:     FailReturnCode,
@@ -98,12 +101,28 @@ func newManager(conf *managerConfig) Manager {
 type manager struct {
 	conf   *managerConfig
 	client client.APIClient
-	runner runner
+	rt     iruntime.Runtime
+}
+
+func callerPkg() string {
+	for i := 1; ; i++ {
+		pc, _, _, ok := stdruntime.Caller(i)
+		if !ok {
+			break
+		}
+		name := stdruntime.FuncForPC(pc).Name()
+		if before, ok := strings.CutSuffix(name, ".TestMain"); ok {
+			return before
+		}
+	}
+	return "unknown"
 }
 
 // Run prepares a docker client, pulls the provided list of images
 // and then runs your tests.
 func (mn *manager) Run(m *testing.M, images ...string) int {
+	fmt.Printf("conex %s\n", callerPkg())
+
 	var err error
 	mn.conf.name, err = testContainersPrefix()
 
@@ -112,12 +131,12 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	}
 
 	allImages := append(append([]string{}, mn.conf.images...), images...)
-	if mn.conf.runner == RunnerDocker && mn.conf.goImage != "" {
+	if mn.conf.runtime == RuntimeDocker && mn.conf.goImage != "" {
 		allImages = append(allImages, mn.conf.goImage)
 	}
 	allImages = dedupeImages(allImages)
 
-	if os.Getenv(ConexRunnerEnv) == "1" {
+	if os.Getenv(docker.ConexRuntimeEnv) == "1" {
 		for i, img := range allImages {
 			allImages[i] = DockerfileTag(img)
 		}
@@ -125,10 +144,10 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 
 	mn.conf.images = allImages
 
-	if mn.conf.runner != RunnerTart {
+	if mn.conf.runtime != RuntimeTart {
 		mn.client, err = client.New(client.FromEnv)
 		if err != nil {
-			Logf(nil, "conex", "error: %v", err)
+			log.Logf(nil, "conex", "error: %v", err)
 			return mn.conf.retcode
 		}
 
@@ -136,12 +155,12 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		// This prevents a race condition in go-dockerclient when multiple
 		// goroutines call methods that trigger checkAPIVersion() concurrently.
 		if _, err := mn.client.Ping(context.Background(), client.PingOptions{}); err != nil {
-			Logf(nil, "conex", "Failed to ping Docker: %v", err)
+			log.Logf(nil, "conex", "Failed to ping Docker: %v", err)
 			return mn.conf.retcode
 		}
 	}
 
-	config := &runnerConfig{
+	config := &iruntime.Config{
 		Name:       mn.conf.name,
 		PullImages: mn.conf.pullImages,
 		Images:     allImages,
@@ -149,14 +168,14 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		GoImage:    DockerfileTag(mn.conf.goImage),
 	}
 
-	// Create the appropriate runner
-	switch mn.conf.runner {
-	case RunnerTart:
-		mn.runner = newTartRunner(config)
-	case RunnerDocker:
-		mn.runner = NewDockerRunner(mn.client, config)
+	// Create the appropriate runtime
+	switch mn.conf.runtime {
+	case RuntimeTart:
+		mn.rt = vm.NewTartRuntime(config)
+	case RuntimeDocker:
+		mn.rt = docker.NewDockerRuntime(mn.client, config)
 	default:
-		mn.runner = newNativeRunner(mn.client, config)
+		mn.rt = docker.NewNativeRuntime(mn.client, config)
 	}
 
 	pullImages, buildImages := splitImageRefs(allImages)
@@ -167,7 +186,7 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 		err = mn.ensure(pullImages)
 	}
 	if err != nil {
-		Logf(nil, "conex", "error: %v", err)
+		log.Logf(nil, "conex", "error: %v", err)
 		return mn.conf.retcode
 	}
 
@@ -178,18 +197,18 @@ func (mn *manager) Run(m *testing.M, images ...string) int {
 	}
 
 	if err != nil {
-		Logf(nil, "conex", "error: %v", err)
+		log.Logf(nil, "conex", "error: %v", err)
 		return mn.conf.retcode
 	}
 
-	Logf(nil, "conex", "Starting your tests.")
+	log.Logf(nil, "conex", "Starting your tests.")
 
-	ret := mn.runner.Run(m)
+	ret := mn.rt.Run(m)
 
-	if mn.conf.runner != RunnerTart {
+	if mn.conf.runtime != RuntimeTart {
 		err = mn.cleanup()
 		if err != nil {
-			Logf(nil, "conex", "cleanup error: %v", err)
+			log.Logf(nil, "conex", "cleanup error: %v", err)
 		}
 	}
 
@@ -204,8 +223,9 @@ func (mn *manager) boxName(test string, image string) string {
 	return name
 }
 
-// Box returns the required container by image name and any tags.
-func (mn *manager) Box(t testing.TB, conf *Config) Container {
+// Box returns a container.
+func (mn *manager) Box(t testing.TB, conf *runtime.Config) runtime.Container {
+	t.Helper()
 	// If image is a Dockerfile, resolve to the built tag.
 	resolvedConf := conf
 	if isDockerfile(conf.Image) {
@@ -214,7 +234,7 @@ func (mn *manager) Box(t testing.TB, conf *Config) Container {
 		resolvedConf = &copy
 	}
 	name := mn.boxName(t.Name(), resolvedConf.Image)
-	c := mn.runner.Box(t, resolvedConf, name)
+	c := mn.rt.Box(t, resolvedConf, name)
 	t.Cleanup(func() {
 		c.Drop()
 	})
@@ -227,17 +247,17 @@ func (mn *manager) pull(images []string) error {
 	}
 
 	l := len(images)
-	Logf(nil, "", "=== Pulling Images (%d)", l)
+	log.Logf(nil, "", "=== Pulling Images (%d)", l)
 	for i, ref := range images {
 		if strings.HasPrefix(ref, "conexbuild/") {
 			continue
 		}
-		Logf(nil, "", "--- Pulling Image (%d of %d) %s", i+1, l, ref)
-		if err := mn.runner.Pull(context.Background(), ref); err != nil {
+		log.Logf(nil, "", "--- Pulling Image (%d of %d) %s", i+1, l, ref)
+		if err := mn.rt.Pull(context.Background(), ref); err != nil {
 			return err
 		}
 	}
-	Logf(nil, "", "=== Pulling Done")
+	log.Logf(nil, "", "=== Pulling Done")
 	return nil
 }
 
@@ -246,47 +266,15 @@ func (mn *manager) build(images []string) error {
 	if l == 0 {
 		return nil
 	}
-	Logf(nil, "", "=== Building Images (%d)", l)
+	log.Logf(nil, "", "=== Building Images (%d)", l)
 	for i, img := range images {
 		tag := DockerfileTag(img)
-		Logf(nil, "", "--- Building Image (%d of %d) %s as %s", i+1, l, img, tag)
-		if err := mn.runner.Build(context.Background(), img, tag); err != nil {
+		log.Logf(nil, "", "--- Building Image (%d of %d) %s as %s", i+1, l, img, tag)
+		if err := mn.rt.Build(context.Background(), img, tag); err != nil {
 			return err
 		}
 	}
-	Logf(nil, "", "=== Building Done")
-	return nil
-}
-
-func dockerPull(ctx context.Context, cli client.APIClient, ref string) error {
-	reader, err := cli.ImagePull(ctx, ref, client.ImagePullOptions{})
-	if err != nil {
-		return err
-	}
-	return printPullProgress(ctx, reader)
-}
-
-func dockerBuild(ctx context.Context, cli client.APIClient, img string, tag string) error {
-	dir := filepath.Dir(img)
-	dockerfileName := filepath.Base(img)
-	buildCtx, err := archive.TarWithOptions(dir, &archive.TarOptions{})
-	if err != nil {
-		return fmt.Errorf("archive %s: %w", img, err)
-	}
-	res, err := cli.ImageBuild(ctx, buildCtx, client.ImageBuildOptions{
-		Tags:       []string{tag},
-		Dockerfile: dockerfileName,
-		Remove:     true,
-	})
-	if err != nil {
-		_ = buildCtx.Close()
-		return fmt.Errorf("build %s: %w", img, err)
-	}
-	err = printBuildProgress(ctx, res.Body)
-	_ = buildCtx.Close()
-	if err != nil {
-		return fmt.Errorf("build %s: %w", img, err)
-	}
+	log.Logf(nil, "", "=== Building Done")
 	return nil
 }
 
@@ -349,30 +337,17 @@ func (mn *manager) ensure(images []string) error {
 		return nil
 	}
 	l := len(images)
-	Logf(nil, "", "=== Checking for Images (%d)", l)
+	log.Logf(nil, "", "=== Checking for Images (%d)", l)
 	width := maxWidth(images)
 	for index, ref := range images {
-		info, err := mn.runner.Ensure(context.Background(), ref)
+		info, err := mn.rt.Ensure(context.Background(), ref)
 		if err != nil {
 			return err
 		}
-		Logf(nil, "", "--- Checked Image (%d of %d) %-*s %s", index+1, l, width, ref, info)
+		log.Logf(nil, "", "--- Checked Image (%d of %d) %-*s %s", index+1, l, width, ref, info)
 	}
-	Logf(nil, "", "=== All Images Found.")
+	log.Logf(nil, "", "=== All Images Found.")
 	return nil
-}
-
-func dockerEnsure(ctx context.Context, cli client.APIClient, ref string) (string, error) {
-	res, err := cli.ImageInspect(ctx, ref)
-	if err != nil {
-		return "", err
-	}
-	img := res.InspectResponse
-	createdTime, err := time.Parse(time.RFC3339Nano, img.Created)
-	if err != nil {
-		createdTime, _ = time.Parse(time.RFC3339, img.Created)
-	}
-	return fmt.Sprintf("%s %10s ago", stringid.TruncateID(img.ID), units.HumanDuration(time.Now().UTC().Sub(createdTime))), nil
 }
 
 func (mn *manager) cleanup() error {

@@ -6,21 +6,21 @@ import (
 	"github.com/omeid/conex"
 )
 
-func TestOptRunnerType(t *testing.T) {
-	// Test setting runner to RunnerDocker
-	m1 := conex.New(conex.OptRunnerType(conex.RunnerDocker))
+func TestOptRuntimeType(t *testing.T) {
+	// Test setting runtime to RuntimeDocker
+	m1 := conex.New(conex.OptRuntimeType(conex.RuntimeDocker))
 	if m1 == nil {
 		t.Fatalf("Expected manager to not be nil")
 	}
 
-	// Test setting runner to RunnerNative
-	m2 := conex.New(conex.OptRunnerType(conex.RunnerNative))
+	// Test setting runtime to RuntimeNative
+	m2 := conex.New(conex.OptRuntimeType(conex.RuntimeNative))
 	if m2 == nil {
 		t.Fatalf("Expected manager to not be nil")
 	}
 
-	// Test setting runner to RunnerTart
-	m3 := conex.New(conex.OptRunnerType(conex.RunnerTart))
+	// Test setting runtime to RuntimeTart
+	m3 := conex.New(conex.OptRuntimeType(conex.RuntimeTart))
 	if m3 == nil {
 		t.Fatalf("Expected manager to not be nil")
 	}

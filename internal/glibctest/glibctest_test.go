@@ -24,10 +24,10 @@ func TestMain(m *testing.M) {
 			expectedRet = 0
 		}
 
-		os.Setenv("CONEX_TEST_GO_IMAGE", image)
-		
+		_ = os.Setenv("CONEX_TEST_GO_IMAGE", image)
+
 		ret := conex.Run(m,
-			conex.OptRunnerType(conex.RunnerDocker),
+			conex.OptRuntimeType(conex.RuntimeDocker),
 			conex.OptRequireImage(image),
 			conex.OptGoImage(image),
 		)
@@ -43,7 +43,7 @@ func TestGlibc(t *testing.T) {
 	if image == "" {
 		t.Fatal("CONEX_TEST_GO_IMAGE is not set")
 	}
-	
+
 	// If we reach here, it means we are inside the container running tests.
 	// We only reach here for images that have glibc (expectedExitCode == 0).
 	// Therefore, CGO_ENABLED doesn't strictly matter for execution, but we

@@ -1,4 +1,4 @@
-package conex_test
+package docker_test
 
 import (
 	"bytes"
@@ -8,10 +8,6 @@ import (
 
 	"github.com/omeid/conex"
 )
-
-func init() {
-	conex.Require(func() string { return basicImage })
-}
 
 func TestWaitAndLogs(t *testing.T) {
 	c := conex.Box(t, &conex.Config{

@@ -1,5 +1,10 @@
 # Changelog
+## [Unreleased]
 
+
+### Changed
+- **Terminology**: Renamed "Runner" to "Runtime" throughout the documentation and environment variables (e.g., `CONEX_RUNTIME`). The term "Runner" has a specific meaning in the context of CI systems (like GitHub Actions runners or GitLab runners), which was creating confusion. We now use "Runtime" to describe the execution environments (Docker, VM, Native).
+ 
 ## [v0.1.4] - 2026-06-19
 ### Added
 - **Glibc Detection**: `Docker Runner` detects and handles glibc requirement for `GoImage`.

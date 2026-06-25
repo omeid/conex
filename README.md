@@ -75,7 +75,7 @@ c := conex.Box(t, &conex.Config{
 })
 ```
 
-`Privileged` and `Binds` are Docker runner options only.
+`Privileged` and `Binds` are Docker runtime options only.
 
 ## Driver Packages
 
@@ -109,29 +109,29 @@ An image can be either:
 
 Before tests run, Conex either pulls/builds these images or validates they already exist, based on configuration (`conex.OptPullImages` and `conex.OptBuildImages`).
 
-## Runners
+## Runtimes
 
-Conex auto-detects the runner unless specified via `conex.OptRunnerType`:
+Conex auto-detects the runtime unless specified via `conex.OptRuntimeType`:
 
-- **Linux + local Docker socket**: native runner (direct container IP)
-- **macOS/Windows/remote Docker**: docker runner (tests run in a container)
+- **Linux + local Docker socket**: native runtime (direct container IP)
+- **macOS/Windows/remote Docker**: docker runtime (tests run in a container)
 
-### Native Runner
+### Native Runtime
 
 Runs tests on the host and connects directly to container IPs.
 
-### Docker Runner
+### Docker Runtime
 
 Runs tests inside a container on a shared `conex` network. This avoids host-network limitations on Docker Desktop and remote Docker hosts.
 
-When using the docker runner, Conex:
+When using the docker runtime, Conex:
 
 1. Creates a `conex` network
 2. Runs the test binary in a Go container on that network
 3. Starts service containers on the same network
 4. Lets containers communicate via container names
 
-Customize the Go image used by the docker runner:
+Customize the Go image used by the docker runtime:
 
 ```go
 func TestMain(m *testing.M) {
@@ -142,35 +142,35 @@ func TestMain(m *testing.M) {
 }
 ```
 
-### Tart Runner (Experimental)
+### Tart Runtime (Experimental)
 
-The Tart runner creates macOS/Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs.
+The Tart runtime creates macOS/Linux VMs using [Tart](https://github.com/cirruslabs/tart) on Apple Silicon Macs.
 
 ```bash
-CONEX_RUNNER=tart go test ./...
+CONEX_RUNTIME=tart go test ./...
 ```
 
-Tart image references should be Tart VM images (for example, `ghcr.io/cirruslabs/macos-sequoia-base:latest`). Dockerfile image refs are not supported with the Tart runner.
+Tart image references should be Tart VM images (for example, `ghcr.io/cirruslabs/macos-sequoia-base:latest`). Dockerfile image refs are not supported with the Tart runtime.
 
 ### Overriding Auto-Detection
 
-While Conex auto-detects the runner by default, you can explicitly override it using an environment variable:
+While Conex auto-detects the runtime by default, you can explicitly override it using an environment variable:
 
 ```bash
-# Force native runner
-CONEX_RUNNER=native go test ./...
+# Force native runtime
+CONEX_RUNTIME=native go test ./...
 
-# Force docker runner
-CONEX_RUNNER=docker go test ./...
+# Force docker runtime
+CONEX_RUNTIME=docker go test ./...
 ```
 
-Alternatively, you can specify the runner programmatically in your tests using `conex.OptRunnerType`:
+Alternatively, you can specify the runtime programmatically in your tests using `conex.OptRuntimeType`:
 
 ```go
 func TestMain(m *testing.M) {
   conex.Main(
     m,
-    conex.OptRunnerType(conex.RunnerDocker), // Explicitly force the Docker runner
+    conex.OptRuntimeType(conex.RuntimeDocker), // Explicitly force the Docker runtime
   )
 }
 ```

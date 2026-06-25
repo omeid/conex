@@ -1,6 +1,4 @@
-//go:build !tart
-
-package conex_test
+package docker_test
 
 import (
 	"github.com/omeid/conex"

@@ -1,4 +1,4 @@
-package conex
+package docker
 
 import (
 	"bytes"
@@ -19,31 +19,36 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"github.com/moby/term"
+
+	iruntime "github.com/omeid/conex/internal/runtime"
+	"github.com/omeid/conex/log"
+	"github.com/omeid/conex/runtime"
 )
 
 const (
 	// ConexNetworkName is the name of the Docker network used for conex containers.
 	ConexNetworkName = "conex"
-	// ConexRunnerEnv is the environment variable that indicates we're running inside a conex container.
-	ConexRunnerEnv = "CONEX_INSIDE_DOCKER"
+	// ConexRuntimeEnv is the environment variable that indicates we're running inside a conex container.
+	ConexRuntimeEnv = "CONEX_INSIDE_DOCKER"
 )
 
 func init() {
-	var _ runner = (*dockerRunner)(nil)
-	var _ Container = (*dockerContainer)(nil)
+	var _ iruntime.Runtime = (*dockerRuntime)(nil)
+	var _ runtime.Container = (*dockerContainer)(nil)
 }
 
-// dockerRunner runs tests inside a Docker container on the same network
+// dockerRuntime runs tests inside a Docker container on the same network
 // as other conex containers. This allows conex to work on systems where
 // container IPs are not directly accessible (e.g., Docker for Mac).
-type dockerRunner struct {
-	*nativeRunner
+type dockerRuntime struct {
+	*nativeRuntime
 	networkID string
 }
 
-func NewDockerRunner(client client.APIClient, config *runnerConfig) runner {
-	return &dockerRunner{
-		nativeRunner: newNativeRunner(client, config).(*nativeRunner),
+// NewDockerRuntime creates a new docker runtime with the provided configuration.
+func NewDockerRuntime(client client.APIClient, config *iruntime.Config) iruntime.Runtime {
+	return &dockerRuntime{
+		nativeRuntime: NewNativeRuntime(client, config).(*nativeRuntime),
 	}
 }
 
@@ -51,9 +56,9 @@ func NewDockerRunner(client client.APIClient, config *runnerConfig) runner {
 // (detected by environment variable), it just runs the tests.
 // Otherwise, it creates a container, mounts the current directory,
 // and runs the tests inside it.
-func (r *dockerRunner) Run(m *testing.M) int {
+func (r *dockerRuntime) Run(m *testing.M) int {
 	// If we're already inside the container, just run the tests
-	if os.Getenv(ConexRunnerEnv) == "1" {
+	if os.Getenv(ConexRuntimeEnv) == "1" {
 		return m.Run()
 	}
 
@@ -62,23 +67,23 @@ func (r *dockerRunner) Run(m *testing.M) int {
 }
 
 // runInDocker creates a container and runs the test binary inside it.
-func (r *dockerRunner) runInDocker() int {
+func (r *dockerRuntime) runInDocker() int {
 	// Ensure the network exists
 	if err := r.ensureNetwork(); err != nil {
-		Logf(nil, "conex", "failed to create network: %v\n", err)
+		log.Logf(nil, "conex", "failed to create network: %v\n", err)
 		return r.config.RetCode
 	}
 
 	// Get the test binary path and working directory
 	testBinary, err := filepath.Abs(os.Args[0])
 	if err != nil {
-		Logf(nil, "conex", "failed to get test binary path: %v\n", err)
+		log.Logf(nil, "conex", "failed to get test binary path: %v\n", err)
 		return r.config.RetCode
 	}
 
 	workDir, err := os.Getwd()
 	if err != nil {
-		Logf(nil, "conex", "failed to get working directory: %v\n", err)
+		log.Logf(nil, "conex", "failed to get working directory: %v\n", err)
 		return r.config.RetCode
 	}
 
@@ -87,9 +92,9 @@ func (r *dockerRunner) runInDocker() int {
 	cmd := os.Args
 
 	// Create container name
-	containerName := fmt.Sprintf("%s-runner", r.config.Name)
+	containerName := fmt.Sprintf("%s-runtime", r.config.Name)
 
-	Logf(nil, "conex", "Running tests inside container (%s)", r.config.GoImage)
+	log.Logf(nil, "conex", "Running tests inside container (%s)", r.config.GoImage)
 
 	// Mount the test binary and working directory
 	binds := []string{
@@ -101,8 +106,8 @@ func (r *dockerRunner) runInDocker() int {
 
 	// Set environment variables
 	env := []string{
-		fmt.Sprintf("%s=1", ConexRunnerEnv),
-		"CONEX_RUNNER=docker",
+		fmt.Sprintf("%s=1", ConexRuntimeEnv),
+		"CONEX_RUNTIME=docker",
 	}
 
 	// Pass through relevant environment variables
@@ -118,11 +123,11 @@ func (r *dockerRunner) runInDocker() int {
 	if os.Getenv("CGO_ENABLED") != "0" {
 		hasGlibc, err := r.glibcVersion(context.Background(), r.config.GoImage)
 		if err != nil {
-			Logf(nil, "conex", "failed to check if GoImage has libc: %v\n", err)
+			log.Logf(nil, "conex", "failed to check if GoImage has libc: %v\n", err)
 			return r.config.RetCode
 		}
 		if !hasGlibc {
-			Logf(
+			log.Logf(
 				nil,
 				"conex",
 				"gnu libc not found in %s, but CGO_ENABLED is not 0. You must disable cgo (CGO_ENABLED=0) to run tests in this image.",
@@ -152,7 +157,7 @@ func (r *dockerRunner) runInDocker() int {
 		},
 	)
 	if err != nil {
-		Logf(nil, "conex", "failed to create runner container: %v\n", err)
+		log.Logf(nil, "conex", "failed to create runtime container: %v\n", err)
 		return r.config.RetCode
 	}
 
@@ -168,7 +173,7 @@ func (r *dockerRunner) runInDocker() int {
 	// Start the container
 	_, err = r.client.ContainerStart(context.Background(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
-		Logf(nil, "conex", "failed to start runner container: %v\n", err)
+		log.Logf(nil, "conex", "failed to start runtime container: %v\n", err)
 		return r.config.RetCode
 	}
 
@@ -194,7 +199,7 @@ func (r *dockerRunner) runInDocker() int {
 	select {
 	case err := <-waitRes.Error:
 		if err != nil {
-			Logf(nil, "conex", "failed to wait for runner container: %v\n", err)
+			log.Logf(nil, "conex", "failed to wait for runtime container: %v\n", err)
 			return r.config.RetCode
 		}
 	case status := <-waitRes.Result:
@@ -205,7 +210,7 @@ func (r *dockerRunner) runInDocker() int {
 }
 
 // ensureNetwork creates the conex network if it doesn't exist.
-func (r *dockerRunner) ensureNetwork() error {
+func (r *dockerRuntime) ensureNetwork() error {
 	networks, err := r.client.NetworkList(context.Background(), client.NetworkListOptions{})
 	if err != nil {
 		return err
@@ -232,13 +237,15 @@ func (r *dockerRunner) ensureNetwork() error {
 
 // Box creates a container on the conex network and returns a Container
 // that uses the container name for connections.
-func (r *dockerRunner) Box(t testing.TB, conf *Config, name string) Container {
+func (r *dockerRuntime) Box(t testing.TB, conf *runtime.Config, name string) runtime.Container {
 	// Ensure network exists
 	if r.networkID == "" {
 		if err := r.ensureNetwork(); err != nil {
-			fatalf(t, "", "Failed to ensure network: %v", err)
+			log.Fatalf(t, "", "Failed to ensure network: %v", err)
 		}
 	}
+
+	name = fmt.Sprintf("%s_%d", name, r.counter.Count(name))
 
 	cname := conf.Image
 	if len(conf.Entrypoint) != 0 {
@@ -248,7 +255,7 @@ func (r *dockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		cname = cname + " cmd: " + strings.Join(conf.Cmd, " ")
 	}
 
-	Logf(t, "conex", "creating (%s) as %s on network %s", cname, name, ConexNetworkName)
+	log.Logf(t, "conex", "creating (%s) as %s on network %s", cname, name, ConexNetworkName)
 
 	exposedPorts := make(network.PortSet)
 	portBindings := make(network.PortMap)
@@ -287,25 +294,25 @@ func (r *dockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		},
 	)
 	if err != nil {
-		fatalf(t, name, "Failed to create container: %s", err)
+		log.Fatalf(t, name, "Failed to create container: %s", err)
 	}
 
 	_, err = r.client.ContainerStart(t.Context(), cresp.ID, client.ContainerStartOptions{})
 	if err != nil {
-		fatalf(t, name, "Failed to start container: %v", err)
+		log.Fatalf(t, name, "Failed to start container: %v", err)
 	}
 
-	Logf(t, "conex", "started (%s) as %s", cname, name)
+	log.Logf(t, "conex", "started (%s) as %s", cname, name)
 
 	cjsonResult, err := r.client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
 	if err != nil {
-		fatalf(t, name, "Failed to inspect: %v", err)
+		log.Fatalf(t, name, "Failed to inspect: %v", err)
 	}
 	cjson := cjsonResult.Container
 
 	// Determine how to address this container
 	var address string
-	if os.Getenv(ConexRunnerEnv) == "1" {
+	if os.Getenv(ConexRuntimeEnv) == "1" {
 		// We're inside a container, use the container name
 		address = name
 	} else {
@@ -375,16 +382,16 @@ func (c *dockerContainer) Drop() {
 }
 
 func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
-	err := wait(c.Address(), port, timeout)
+	err := iruntime.Wait(c.Address(), port, timeout)
 	if err != nil && testing.Verbose() {
-		Logf(nil, "conex", "=== Container %s Logs ===\n", c.Name())
+		log.Logf(nil, "conex", "=== Container %s Logs ===\n", c.Name())
 		_ = c.Logs(os.Stdout, os.Stderr)
-		Logf(nil, "conex", "=========================\n")
+		log.Logf(nil, "conex", "=========================\n")
 	}
 	return err
 }
 
-func (c *dockerContainer) Exec(cmd ...string) *Cmd {
+func (c *dockerContainer) Exec(cmd ...string) *runtime.Cmd {
 	return newDockerCmd(c.t, c.client, c.json.ID, cmd)
 }
 
@@ -416,12 +423,12 @@ func (c *dockerContainer) Logs(stdout io.Writer, stderr io.Writer) error {
 	return err
 }
 
-func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []string) *Cmd {
+func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []string) *runtime.Cmd {
 	if len(cmd) == 0 {
 		return nil
 	}
 
-	c := &Cmd{
+	c := &runtime.Cmd{
 		Path:   cmd[0],
 		Args:   cmd,
 		Stdout: io.Discard,
@@ -431,7 +438,7 @@ func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []
 	var execID string
 	errCh := make(chan error, 1)
 
-	c.start = func() error {
+	start := func() error {
 		opts := client.ExecCreateOptions{
 			Cmd:          c.Args,
 			Env:          c.Env,
@@ -470,7 +477,7 @@ func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []
 		return nil
 	}
 
-	c.wait = func() error {
+	wait := func() error {
 		err := <-errCh
 		if err != nil && err != io.EOF {
 			return err
@@ -485,10 +492,10 @@ func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []
 		return nil
 	}
 
-	return c
+	return runtime.WireCommand(c, start, wait)
 }
 
-func (r *dockerRunner) glibcVersion(ctx context.Context, image string) (bool, error) {
+func (r *dockerRuntime) glibcVersion(ctx context.Context, image string) (bool, error) {
 	// Short circuit for common images to avoid container creation
 	if strings.Contains(image, "alpine") {
 		return false, nil
@@ -522,7 +529,9 @@ func (r *dockerRunner) glibcVersion(ctx context.Context, image string) (bool, er
 
 	var stdout, stderr bytes.Buffer
 	go func() {
-		defer logs.Close()
+		defer func() {
+			_ = logs.Close()
+		}()
 		_, _ = stdcopy.StdCopy(&stdout, &stderr, logs)
 	}()
 
