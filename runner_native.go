@@ -54,10 +54,11 @@ func (r *nativeRunner) Run(m *testing.M) int {
 // Box creates a container and returns a Container that uses the container's
 // direct IP address for connections.
 func (r *nativeRunner) Box(t testing.TB, conf *Config, name string) Container {
-	name = fmt.Sprintf("%s_%d", name, r.counter.Count(name))
+	return r.box(t, conf, name, nil)
+}
 
-	// cname is a simple canonical name that includes the
-	// container image name and params.
+func (r *nativeRunner) box(t testing.TB, conf *Config, name string, optCreateConfig func(*client.ContainerCreateOptions)) Container {
+	name = fmt.Sprintf("%s_%d", name, r.counter.Count(name))
 	cname := conf.Image
 	if len(conf.Entrypoint) != 0 {
 		cname = cname + " entrypoint: " + strings.Join(conf.Entrypoint, " ")
@@ -73,27 +74,30 @@ func (r *nativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 		exposedPorts[network.MustParsePort(port)] = struct{}{}
 	}
 
-	cresp, err := r.client.ContainerCreate(
-		t.Context(),
-		client.ContainerCreateOptions{
-			Config: &container.Config{
-				Image:        conf.Image,
-				Entrypoint:   conf.Entrypoint,
-				Cmd:          conf.Cmd,
-				Env:          conf.Env,
-				Hostname:     conf.Hostname,
-				Domainname:   conf.Domainname,
-				User:         conf.User,
-				Tty:          term.IsTerminal(os.Stdout.Fd()),
-				ExposedPorts: exposedPorts,
-			},
-			HostConfig: &container.HostConfig{
-				Privileged: conf.Privileged,
-				Binds:      conf.Binds,
-			},
-			Name: name,
+	cc := client.ContainerCreateOptions{
+		Config: &container.Config{
+			Image:        conf.Image,
+			Entrypoint:   conf.Entrypoint,
+			Cmd:          conf.Cmd,
+			Env:          conf.Env,
+			Hostname:     conf.Hostname,
+			Domainname:   conf.Domainname,
+			User:         conf.User,
+			Tty:          term.IsTerminal(os.Stdout.Fd()),
+			ExposedPorts: exposedPorts,
 		},
-	)
+		HostConfig: &container.HostConfig{
+			Privileged: conf.Privileged,
+			Binds:      conf.Binds,
+		},
+		Name: name,
+	}
+
+	if optCreateConfig != nil {
+		optCreateConfig(&cc)
+	}
+
+	cresp, err := r.client.ContainerCreate(t.Context(), cc)
 	if err != nil {
 		fatalf(t, name, "Failed to create container: %s", err)
 	}
@@ -109,18 +113,29 @@ func (r *nativeRunner) Box(t testing.TB, conf *Config, name string) Container {
 	if err != nil {
 		fatalf(t, name, "Failed to inspect: %v", err)
 	}
+	cjson := cjsonResult.Container
 
 	// Determine address (usually the bridge network IP)
 	var address string
-	for _, network := range cjsonResult.Container.NetworkSettings.Networks {
-		if network.IPAddress.IsValid() {
-			address = network.IPAddress.String()
-			break
+	if cc.HostConfig.NetworkMode == ConexNetworkName {
+		if os.Getenv(ConexRunnerEnv) == "1" {
+			address = name
+		} else if netSettings, ok := cjson.NetworkSettings.Networks[ConexNetworkName]; ok && netSettings.IPAddress.IsValid() {
+			address = netSettings.IPAddress.String()
+		}
+	}
+
+	if address == "" {
+		for _, network := range cjson.NetworkSettings.Networks {
+			if network.IPAddress.IsValid() {
+				address = network.IPAddress.String()
+				break
+			}
 		}
 	}
 
 	return &dockerContainer{
-		json:    cjsonResult.Container,
+		json:    cjson,
 		client:  r.client,
 		t:       t,
 		name:    name,

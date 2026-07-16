@@ -1,16 +1,13 @@
 package conex
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"net/netip"
 
@@ -18,7 +15,6 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
-	"github.com/moby/term"
 )
 
 const (
@@ -30,7 +26,6 @@ const (
 
 func init() {
 	var _ runner = (*dockerRunner)(nil)
-	var _ Container = (*dockerContainer)(nil)
 }
 
 // dockerRunner runs tests inside a Docker container on the same network
@@ -69,34 +64,78 @@ func (r *dockerRunner) runInDocker() int {
 		return r.config.RetCode
 	}
 
-	// Get the test binary path and working directory
-	testBinary, err := filepath.Abs(os.Args[0])
-	if err != nil {
-		Logf(nil, "conex", "failed to get test binary path: %v\n", err)
-		return r.config.RetCode
-	}
-
 	workDir, err := os.Getwd()
 	if err != nil {
 		Logf(nil, "conex", "failed to get working directory: %v\n", err)
 		return r.config.RetCode
 	}
 
-	// Build the command - re-run the test binary with same args
-	// The test binary is already compiled, we just need to run it
-	cmd := os.Args
+	if evaluated, err := filepath.EvalSymlinks(workDir); err == nil {
+		workDir = evaluated
+	}
+
+	// Inspect triple OS, architecture, and glibc availability.
+	triple, err := r.inspectTarget(context.Background(), r.config.GoImage)
+	if err != nil {
+		Logf(nil, "conex", "failed to inspect target image triple: %v\n", err)
+		return r.config.RetCode
+	}
+
+	root := workDir
+	projectRoot := findProjectRoot(workDir)
+	if projectRoot != "" {
+		root = projectRoot
+	}
+
+	cmd := make([]string, 0, len(os.Args))
+	if !triple.matchOS() {
+		var cleanup func()
+		bin, cleanup, err := r.crossCompile(triple, root)
+		if err != nil {
+			Logf(nil, "conex", "failed to cross-compile test binary: %v\n", err)
+			return r.config.RetCode
+		}
+		cmd = append(cmd, bin)
+		defer cleanup()
+	} else {
+		bin, err := filepath.Abs(os.Args[0])
+		if err != nil {
+			Logf(nil, "conex", "failed to get test binary path: %v\n", err)
+			return r.config.RetCode
+		}
+		cmd = append(cmd, bin)
+	}
+
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "-test.testlogfile") || strings.HasPrefix(arg, "--test.testlogfile") {
+			continue
+		}
+		cmd = append(cmd, arg)
+	}
+
+	if evaluated, err := filepath.EvalSymlinks(cmd[0]); err == nil {
+		cmd[0] = evaluated
+	}
 
 	// Create container name
 	containerName := fmt.Sprintf("%s-runner", r.config.Name)
 
 	Logf(nil, "conex", "Running tests inside container (%s)", r.config.GoImage)
 
-	// Mount the test binary and working directory
+	// Determine host Docker socket path
+	dockerSocket := "/var/run/docker.sock"
+	if runtime.GOOS == "linux" {
+		if host := os.Getenv("DOCKER_HOST"); strings.HasPrefix(host, "unix://") {
+			dockerSocket = strings.TrimPrefix(host, "unix://")
+		}
+	}
+
+	// Mount the compiled test binary and the project root directory.
 	binds := []string{
-		fmt.Sprintf("%s:%s:ro", testBinary, testBinary),
-		fmt.Sprintf("%s:%s", workDir, workDir),
+		fmt.Sprintf("%s:%s:ro", cmd[0], cmd[0]),
+		fmt.Sprintf("%s:%s", root, root),
 		// Mount Docker socket so the test can create containers
-		"/var/run/docker.sock:/var/run/docker.sock",
+		fmt.Sprintf("%s:/var/run/docker.sock", dockerSocket),
 	}
 
 	// Set environment variables
@@ -107,28 +146,14 @@ func (r *dockerRunner) runInDocker() int {
 
 	// Pass through relevant environment variables
 	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "DOCKER_HOST=") {
+			continue
+		}
 		if strings.HasPrefix(e, "DOCKER_") ||
 			strings.HasPrefix(e, "CONEX_") ||
 			strings.HasPrefix(e, "GO") ||
 			strings.HasPrefix(e, "PATH=") {
 			env = append(env, e)
-		}
-	}
-
-	if os.Getenv("CGO_ENABLED") != "0" {
-		hasGlibc, err := r.glibcVersion(context.Background(), r.config.GoImage)
-		if err != nil {
-			Logf(nil, "conex", "failed to check if GoImage has libc: %v\n", err)
-			return r.config.RetCode
-		}
-		if !hasGlibc {
-			Logf(
-				nil,
-				"conex",
-				"gnu libc not found in %s, but CGO_ENABLED is not 0. You must disable cgo (CGO_ENABLED=0) to run tests in this image.",
-				r.config.GoImage,
-			)
-			return r.config.RetCode
 		}
 	}
 
@@ -230,8 +255,6 @@ func (r *dockerRunner) ensureNetwork() error {
 	return nil
 }
 
-// Box creates a container on the conex network and returns a Container
-// that uses the container name for connections.
 func (r *dockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 	// Ensure network exists
 	if r.networkID == "" {
@@ -240,319 +263,25 @@ func (r *dockerRunner) Box(t testing.TB, conf *Config, name string) Container {
 		}
 	}
 
-	cname := conf.Image
-	if len(conf.Entrypoint) != 0 {
-		cname = cname + " entrypoint: " + strings.Join(conf.Entrypoint, " ")
-	}
-	if len(conf.Cmd) != 0 {
-		cname = cname + " cmd: " + strings.Join(conf.Cmd, " ")
-	}
+	optCreateConfig := func(cc *client.ContainerCreateOptions) {
+		exposedPorts := make(network.PortSet)
+		portBindings := make(network.PortMap)
 
-	Logf(t, "conex", "creating (%s) as %s on network %s", cname, name, ConexNetworkName)
-
-	exposedPorts := make(network.PortSet)
-	portBindings := make(network.PortMap)
-
-	for _, port := range conf.Expose {
-		dp := network.MustParsePort(port)
-		exposedPorts[dp] = struct{}{}
-		// Bind to random host port for potential debugging
-		portBindings[dp] = []network.PortBinding{{
-			HostIP:   netip.MustParseAddr("0.0.0.0"),
-			HostPort: "",
-		}}
-	}
-
-	cresp, err := r.client.ContainerCreate(
-		t.Context(),
-		client.ContainerCreateOptions{
-			Config: &container.Config{
-				Image:        conf.Image,
-				Entrypoint:   conf.Entrypoint,
-				Cmd:          conf.Cmd,
-				Env:          conf.Env,
-				Hostname:     conf.Hostname,
-				Domainname:   conf.Domainname,
-				User:         conf.User,
-				Tty:          term.IsTerminal(os.Stdout.Fd()),
-				ExposedPorts: exposedPorts,
-			},
-			HostConfig: &container.HostConfig{
-				NetworkMode:  ConexNetworkName,
-				PortBindings: portBindings,
-				Privileged:   conf.Privileged,
-				Binds:        conf.Binds,
-			},
-			Name: name,
-		},
-	)
-	if err != nil {
-		fatalf(t, name, "Failed to create container: %s", err)
-	}
-
-	_, err = r.client.ContainerStart(t.Context(), cresp.ID, client.ContainerStartOptions{})
-	if err != nil {
-		fatalf(t, name, "Failed to start container: %v", err)
-	}
-
-	Logf(t, "conex", "started (%s) as %s", cname, name)
-
-	cjsonResult, err := r.client.ContainerInspect(t.Context(), cresp.ID, client.ContainerInspectOptions{})
-	if err != nil {
-		fatalf(t, name, "Failed to inspect: %v", err)
-	}
-	cjson := cjsonResult.Container
-
-	// Determine how to address this container
-	var address string
-	if os.Getenv(ConexRunnerEnv) == "1" {
-		// We're inside a container, use the container name
-		address = name
-	} else {
-		// We're on the host, try to use the container's IP on the conex network
-		if netSettings, ok := cjson.NetworkSettings.Networks[ConexNetworkName]; ok && netSettings.IPAddress.IsValid() {
-			address = netSettings.IPAddress.String()
-		} else {
-			// Try any available network
-			for _, network := range cjson.NetworkSettings.Networks {
-				if network.IPAddress.IsValid() {
-					address = network.IPAddress.String()
-					break
-				}
-			}
+		for _, port := range conf.Expose {
+			dp := network.MustParsePort(port)
+			exposedPorts[dp] = struct{}{}
+			// Bind to random host port for potential debugging
+			portBindings[dp] = []network.PortBinding{{
+				HostIP:   netip.MustParseAddr("0.0.0.0"),
+				HostPort: "",
+			}}
 		}
+		cc.Config.ExposedPorts = exposedPorts
+		cc.HostConfig.NetworkMode = ConexNetworkName
+		cc.HostConfig.PortBindings = portBindings
 	}
 
-	return &dockerContainer{
-		json:    cjson,
-		client:  r.client,
-		t:       t,
-		name:    name,
-		address: address,
-	}
+	return r.box(t, conf, name, optCreateConfig)
 }
 
-// dockerContainer implements Container for Docker network-based access.
-type dockerContainer struct {
-	json     container.InspectResponse
-	client   client.APIClient
-	t        testing.TB
-	name     string
-	address  string
-	dropOnce sync.Once
-}
 
-func (c *dockerContainer) ID() string {
-	return c.json.ID
-}
-
-func (c *dockerContainer) Image() string {
-	return c.json.Config.Image
-}
-
-func (c *dockerContainer) Name() string {
-	return c.json.Name
-}
-
-func (c *dockerContainer) Address() string {
-	return c.address
-}
-
-func (c *dockerContainer) Drop() {
-	c.dropOnce.Do(func() {
-		// Try to stop the container, but don't fail if it's already stopped
-		timeout := 10
-		_, _ = c.client.ContainerStop(context.Background(), c.json.ID, client.ContainerStopOptions{Timeout: &timeout})
-
-		_, err := c.client.ContainerRemove(context.Background(), c.json.ID, client.ContainerRemoveOptions{
-			RemoveVolumes: true,
-			Force:         true,
-		})
-		if err != nil {
-			c.t.Fatal(err)
-		}
-	})
-}
-
-func (c *dockerContainer) Wait(port string, timeout time.Duration) error {
-	err := wait(c.Address(), port, timeout)
-	if err != nil && testing.Verbose() {
-		Logf(nil, "conex", "=== Container %s Logs ===\n", c.Name())
-		_ = c.Logs(os.Stdout, os.Stderr)
-		Logf(nil, "conex", "=========================\n")
-	}
-	return err
-}
-
-func (c *dockerContainer) Exec(cmd ...string) *Cmd {
-	return newDockerCmd(c.t, c.client, c.json.ID, cmd)
-}
-
-// Logs writes the container logs to the provided stdout and stderr writers.
-func (c *dockerContainer) Logs(stdout io.Writer, stderr io.Writer) error {
-	reader, err := c.client.ContainerLogs(c.t.Context(), c.json.ID, client.ContainerLogsOptions{
-		ShowStdout: stdout != nil,
-		ShowStderr: stderr != nil,
-		Follow:     false,
-	})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = reader.Close() }()
-
-	if c.json.Config != nil && c.json.Config.Tty {
-		w := stdout
-		if w == nil {
-			w = stderr
-		}
-		if w == nil {
-			w = io.Discard
-		}
-		_, err := io.Copy(w, reader)
-		return err
-	}
-
-	_, err = stdcopy.StdCopy(stdout, stderr, reader)
-	return err
-}
-
-func newDockerCmd(t testing.TB, cli client.APIClient, containerID string, cmd []string) *Cmd {
-	if len(cmd) == 0 {
-		return nil
-	}
-
-	c := &Cmd{
-		Path:   cmd[0],
-		Args:   cmd,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-
-	var execID string
-	errCh := make(chan error, 1)
-
-	c.start = func() error {
-		opts := client.ExecCreateOptions{
-			Cmd:          c.Args,
-			Env:          c.Env,
-			WorkingDir:   c.Dir,
-			AttachStdin:  c.Stdin != nil,
-			AttachStdout: true,
-			AttachStderr: true,
-		}
-
-		execInfo, err := cli.ExecCreate(t.Context(), containerID, opts)
-		if err != nil {
-			return err
-		}
-		execID = execInfo.ID
-
-		go func() {
-			resp, err := cli.ExecAttach(t.Context(), execID, client.ExecAttachOptions{
-				TTY: false,
-			})
-			if err != nil {
-				errCh <- err
-				return
-			}
-			defer resp.Close()
-
-			if c.Stdin != nil {
-				go func() {
-					_, _ = io.Copy(resp.Conn, c.Stdin)
-					_ = resp.CloseWrite()
-				}()
-			}
-
-			_, copyErr := stdcopy.StdCopy(c.Stdout, c.Stderr, resp.Reader)
-			errCh <- copyErr
-		}()
-		return nil
-	}
-
-	c.wait = func() error {
-		err := <-errCh
-		if err != nil && err != io.EOF {
-			return err
-		}
-		execInspect, err := cli.ExecInspect(t.Context(), execID, client.ExecInspectOptions{})
-		if err != nil {
-			return err
-		}
-		if execInspect.ExitCode != 0 {
-			return fmt.Errorf("exit status %d", execInspect.ExitCode)
-		}
-		return nil
-	}
-
-	return c
-}
-
-func (r *dockerRunner) glibcVersion(ctx context.Context, image string) (bool, error) {
-	// Short circuit for common images to avoid container creation
-	if strings.Contains(image, "alpine") {
-		return false, nil
-	}
-	if strings.HasPrefix(image, "golang:") || image == "golang" {
-		return true, nil
-	}
-
-	cresp, err := r.client.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config: &container.Config{
-			Image:      image,
-			Entrypoint: []string{"sh", "-c", "getconf GNU_LIBC_VERSION"},
-			Tty:        false,
-		},
-		HostConfig: &container.HostConfig{
-			AutoRemove: true,
-		},
-	})
-	if err != nil {
-		return false, err
-	}
-
-	logs, err := r.client.ContainerLogs(ctx, cresp.ID, client.ContainerLogsOptions{
-		ShowStderr: true,
-		ShowStdout: true,
-		Follow:     true,
-	})
-	if err != nil {
-		return false, err
-	}
-
-	var stdout, stderr bytes.Buffer
-	go func() {
-		defer logs.Close()
-		_, _ = stdcopy.StdCopy(&stdout, &stderr, logs)
-	}()
-
-	if _, err := r.client.ContainerStart(ctx, cresp.ID, client.ContainerStartOptions{}); err != nil {
-		return false, err
-	}
-	waitRes := r.client.ContainerWait(ctx, cresp.ID, client.ContainerWaitOptions{
-		Condition: container.WaitConditionNextExit,
-	})
-
-	var statusCode int64
-	select {
-	case err := <-waitRes.Error:
-		return false, err
-	case result := <-waitRes.Result:
-		statusCode = result.StatusCode
-	}
-
-	if statusCode == 0 {
-		return true, nil
-	}
-
-	errStr := strings.TrimSpace(stderr.String())
-	if errStr == "" {
-		errStr = strings.TrimSpace(stdout.String())
-	}
-
-	if strings.Contains(errStr, "unknown variable") || strings.Contains(errStr, "not found") {
-		return false, nil
-	}
-
-	return false, fmt.Errorf("getconf failed: exit code %d, output: %s", statusCode, errStr)
-}

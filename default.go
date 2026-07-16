@@ -3,6 +3,7 @@ package conex
 import (
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -65,7 +66,7 @@ func detectRunner() RunnerType {
 	if runtime.GOOS == "linux" {
 		// Check if DOCKER_HOST is set to something non-local
 		dockerHost := os.Getenv("DOCKER_HOST")
-		if dockerHost == "" || dockerHost == "unix:///var/run/docker.sock" {
+		if dockerHost == "" || strings.HasPrefix(dockerHost, "unix://") {
 			return RunnerNative
 		}
 	}
